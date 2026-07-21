@@ -1,0 +1,7 @@
+CREATE TABLE system_roles (
+    role_id SERIAL PRIMARY KEY,
+    role_name VARCHAR(100) UNIQUE NOT NULL,
+    description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

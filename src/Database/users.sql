@@ -16,8 +16,12 @@ CREATE TABLE users (
     role user_role NOT NULL,
     status BOOLEAN DEFAULT TRUE,
     on_duty BOOLEAN DEFAULT FALSE,
-    duty_start TIMESTAMP NULL,
-    duty_end TIMESTAMP NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_login TIMESTAMP
 );
+
+
+
+
+// Run this Afer Update 
+SET TIME ZONE 'Asia/Manila';

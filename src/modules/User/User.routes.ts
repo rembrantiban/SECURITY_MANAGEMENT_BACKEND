@@ -12,13 +12,13 @@ import {
   getCurrentUser,
   getUserStatistics,
   getSecurityPersonnel,
-  setDutySchedule,
   getUserById,
+  changePassword,
 } from "./User.controller";
 import  { verifyToken }  from "../../middleware/protectedRoute"
 
 const router = Router();
-
+console.log("Auth router mounted");
 router.get("/test", (req, res) => {
   res.json({
     success: true,
@@ -39,6 +39,7 @@ router.put("/change-account-details", verifyToken, changeAccountDetails);
 router.post("/logout", logout);
 router.get("/statistics", verifyToken, getUserStatistics);
 router.get("/security-personnel", verifyToken, getSecurityPersonnel);
-router.put("/set-duty-schedule/:user_id", verifyToken, setDutySchedule);
+//router.put("/set-duty-schedule/:user_id", verifyToken, setDutySchedule);
+router.put("/change-password", verifyToken, changePassword);
 
 export default router;

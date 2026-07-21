@@ -110,6 +110,127 @@ export const createIncidentReport = async (
     }
 };
 
+export const updateIncident = async (
+    req: Request,
+    res: Response
+): Promise<void> => {
+    const client = await pool.connect();
+
+    try {
+        await client.query("BEGIN");
+
+        const { incident_id } = req.params;
+
+        const {
+            title,
+            category,
+            severity,
+            location,
+            description,
+        } = req.body;
+
+        const currentUser = req.user;
+
+        const incidentResult = await client.query(
+            `
+            SELECT *
+            FROM incident_reports
+            WHERE incident_id = $1
+            `,
+            [incident_id]
+        );
+
+        if (incidentResult.rows.length === 0) {
+            await client.query("ROLLBACK");
+
+            res.status(404).json({
+                success: false,
+                message: "Incident not found.",
+            });
+            return;
+        }
+
+        const incident = incidentResult.rows[0];
+
+        if (
+            currentUser?.role !== "Administrator" &&
+            incident.reported_by !== currentUser?.user_id
+        ) {
+            await client.query("ROLLBACK");
+
+            res.status(403).json({
+                success: false,
+                message: "Unauthorized.",
+            });
+            return;
+        }
+
+        if (
+            currentUser?.role !== "Administrator" &&
+            incident.status !== "Pending"
+        ) {
+            await client.query("ROLLBACK");
+
+            res.status(400).json({
+                success: false,
+                message: "Only pending incidents can be updated.",
+            });
+            return;
+        }
+
+        let incidentImage = incident.incident_image;
+
+        if (req.file) {
+            const uploaded = await uploadToCloudinary(req.file);
+            incidentImage = uploaded.secure_url;
+        }
+
+        const { rows } = await client.query(
+            `
+            UPDATE incident_reports
+            SET
+                title = $1,
+                category = $2,
+                severity = $3,
+                location = $4,
+                description = $5,
+                incident_image = $6,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE incident_id = $7
+            RETURNING *;
+            `,
+            [
+                title,
+                category,
+                severity,
+                location,
+                description,
+                incidentImage,
+                incident_id,
+            ]
+        );
+
+        await client.query("COMMIT");
+
+        res.status(200).json({
+            success: true,
+            message: "Incident updated successfully.",
+            incident: rows[0],
+        });
+    } catch (error) {
+        await client.query("ROLLBACK");
+
+        console.error(error);
+
+        res.status(500).json({
+            success: false,
+            message: "Failed to update incident.",
+        });
+    } finally {
+        client.release();
+    }
+};
+
 export const getAllIncidents = async (
     req: Request,
     res: Response
@@ -154,6 +275,8 @@ export const getAllIncidents = async (
 
             LEFT JOIN users assignee
                 ON assignee.user_id = ir.assigned_to
+            
+             WHERE ir.status NOT IN ('Resolved', 'Closed')
 
             ORDER BY ir.created_at DESC
             `
@@ -174,109 +297,7 @@ export const getAllIncidents = async (
     }
 };
 
-export const updateIncident = async (
-    req: Request,
-    res: Response
-) => {
-    try {
-        const { incident_id } = req.params;
 
-        const {
-            title,
-            category,
-            severity,
-            location,
-            description,
-        } = req.body;
-
-        const currentUser = req.user;
-
-        const incident = await pool.query(
-            `
-      SELECT *
-      FROM incident_reports
-      WHERE incident_id = $1
-      `,
-            [incident_id]
-        );
-
-        if (incident.rows.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: "Incident not found.",
-            });
-        }
-
-        const report = incident.rows[0];
-
-        if (
-            currentUser?.role !== "Administrator" &&
-            report.reported_by !== currentUser?.user_id
-        ) {
-            return res.status(403).json({
-                success: false,
-                message: "Unauthorized.",
-            });
-        }
-
-        if (
-            currentUser?.role !== "Administrator" &&
-            report.status !== "Pending"
-        ) {
-            return res.status(400).json({
-                success: false,
-                message:
-                    "Only pending incidents can be edited.",
-            });
-        }
-
-        let imageUrl = report.incident_image;
-
-        if (req.file) {
-            imageUrl = await uploadToCloudinary(
-                req.file,
-                "incident_reports"
-            );
-        }
-
-        const { rows } = await pool.query(
-            `
-      UPDATE incident_reports
-      SET
-          title=$1,
-          category=$2,
-          severity=$3,
-          location=$4,
-          description=$5,
-          incident_image=$6
-      WHERE incident_id=$7
-      RETURNING *;
-      `,
-            [
-                title,
-                category,
-                severity,
-                location,
-                description,
-                imageUrl,
-                incident_id,
-            ]
-        );
-
-        return res.status(200).json({
-            success: true,
-            message: "Incident updated successfully.",
-            incident: rows[0],
-        });
-    } catch (error) {
-        console.error(error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Failed to update incident.",
-        });
-    }
-};
 
 export const deleteIncident = async (
     req: Request,
@@ -342,9 +363,9 @@ export const deleteIncident = async (
 
         await pool.query(
             `
-      DELETE FROM incident_reports
-      WHERE incident_id=$1
-      `,
+        DELETE FROM incident_reports
+        WHERE incident_id=$1
+        `,
             [incident_id]
         );
 
@@ -416,8 +437,10 @@ export const getMyIncidentReports = async (
 
             LEFT JOIN users assignee
                 ON assignee.user_id = ir.assigned_to
-
-            WHERE ir.reported_by = $1
+                
+           WHERE
+                ir.reported_by = $1
+                AND ir.status NOT IN ('Resolved', 'Closed')
 
             ORDER BY ir.created_at DESC
             `,
@@ -588,6 +611,7 @@ export const assignIncident = async (
     }
 };
 
+
 export const reAssignIncident = async (
     req: Request,
     res: Response
@@ -725,3 +749,247 @@ export const closeIncident = async (
     }
 };
 
+
+export const ResolveIncident = async (
+    req: Request,
+    res: Response
+) => {
+    try {
+        const { incident_id } = req.params;
+
+        const currentUser = req.user;
+
+        if (!currentUser) {
+            return res.status(401).json({
+                success: false,
+                message: "Unauthorized.",
+            });
+        }
+
+        const incidentResult = await pool.query(
+            `
+            SELECT *
+            FROM incident_reports
+            WHERE incident_id = $1
+            `,
+            [incident_id]
+        );
+
+        if (incidentResult.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "Incident not found.",
+            });
+        }
+
+        const incident = incidentResult.rows[0];
+
+        // Only Administrator or assigned personnel can resolve
+        if (
+            currentUser.role !== "Administrator" &&
+            incident.assigned_to !== currentUser.user_id
+        ) {
+            return res.status(403).json({
+                success: false,
+                message:
+                    "You are not authorized to resolve this incident.",
+            });
+        }
+
+        if (incident.status === "Resolved" || incident.status === "Closed") {
+            return res.status(400).json({
+                success: false,
+                message: "Incident is already resolved or closed.",
+            });
+        }
+
+        const { rows } = await pool.query(
+            `
+            UPDATE incident_reports
+            SET
+                status = 'Resolved',
+                updated_at = CURRENT_TIMESTAMP
+            WHERE incident_id = $1
+            RETURNING *;
+            `,
+            [incident_id]
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: "Incident resolved successfully.",
+            incident: rows[0],
+        });
+    } catch (error) {
+        console.error(error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Failed to resolve incident.",
+        });
+    }
+};
+
+export const getIncidentStatistics = async (
+    req: Request,
+    res: Response
+) => {
+    try {
+        const { rows } = await pool.query(`
+            SELECT
+                COUNT(*)::INT AS total_incidents,
+
+                COUNT(*) FILTER (
+                    WHERE status = 'Pending'
+                )::INT AS pending_incidents,
+
+                COUNT(*) FILTER (
+                    WHERE status IN ('Resolved', 'Closed')
+                )::INT AS resolved_incidents,
+
+                COUNT(DISTINCT assigned_to)::INT AS assigned_personnel
+
+            FROM incident_reports;
+        `);
+
+        res.status(200).json({
+            success: true,
+            stats: rows[0],
+        });
+
+    } catch (error) {
+        console.error(error);
+
+        res.status(500).json({
+            success: false,
+            message: "Failed to fetch incident statistics.",
+        });
+    }
+};
+
+
+export const getMyAssignedIncidents = async (
+    req: Request,
+    res: Response
+) => {
+    try {
+        const userId = req.user?.user_id;
+
+        if (!userId) {
+            return res.status(401).json({
+                success: false,
+                message: "Unauthorized",
+            });
+        }
+
+        const { rows } = await pool.query(
+            `
+            SELECT
+                ir.incident_id,
+                ir.incident_number,
+                ir.title,
+                ir.category,
+                ir.severity,
+                ir.location,
+                ir.description,
+                ir.incident_image,
+                ir.status,
+                ir.note,
+                ir.created_at,
+                ir.updated_at,
+
+                CONCAT(
+                    reporter.first_name,
+                    ' ',
+                    reporter.last_name
+                ) AS reported_by,
+
+                CONCAT(
+                    assignee.first_name,
+                    ' ',
+                    assignee.last_name
+                ) AS assigned_to
+
+            FROM incident_reports ir
+
+            INNER JOIN users reporter
+                ON reporter.user_id = ir.reported_by
+
+            LEFT JOIN users assignee
+                ON assignee.user_id = ir.assigned_to
+
+            WHERE
+                ir.assigned_to = $1
+                AND ir.status NOT IN ('Resolved', 'Closed')
+
+            ORDER BY ir.created_at DESC
+            `,
+            [userId]
+        );
+
+        return res.status(200).json({
+            success: true,
+            count: rows.length,
+            incidents: rows,
+        });
+    } catch (error) {
+        console.error(error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Failed to fetch assigned incidents.",
+        });
+    }
+};
+
+export const getPersonnelDashboardStats = async (
+    req: Request,
+    res: Response
+) => {
+    try {
+        const userId = req.user?.user_id;
+
+        if (!userId) {
+            return res.status(401).json({
+                success: false,
+                message: "Unauthorized",
+            });
+        }
+
+        const { rows } = await pool.query(
+            `
+            SELECT
+                COUNT(*) FILTER (
+                    WHERE assigned_to = $1
+                    AND status NOT IN ('Resolved', 'Closed')
+                )::INT AS assigned_incidents,
+
+                COUNT(*) FILTER (
+                    WHERE assigned_to = $1
+                    AND status = 'In Progress'
+                )::INT AS active_response,
+
+                COUNT(*) FILTER (
+                    WHERE assigned_to = $1
+                    AND status = 'Resolved'
+                    AND DATE(updated_at) = CURRENT_DATE
+                )::INT AS resolved_today
+
+            FROM incident_reports;
+            `,
+            [userId]
+        );
+
+        res.status(200).json({
+            success: true,
+            stats: rows[0],
+        });
+    } catch (error) {
+        console.error(error);
+
+        res.status(500).json({
+            success: false,
+            message: "Failed to fetch personnel dashboard statistics.",
+        });
+    }
+};

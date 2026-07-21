@@ -84,10 +84,15 @@ export const login = async (
         const { login, password } = req.body;
 
         const result = await pool.query(
-            "SELECT * FROM users WHERE email = $1 OR username = $2",
+            `
+            SELECT *
+            FROM users
+            WHERE email = $1
+               OR username = $2
+            `,
             [login, login]
         );
-        
+
         if (result.rows.length === 0) {
             res.status(401).json({
                 success: false,
@@ -98,10 +103,10 @@ export const login = async (
 
         const user = result.rows[0];
 
-        if(!user.status) {
+        if (!user.status) {
             res.status(403).json({
                 success: false,
-                message: "Your account has been deactivated",
+                message: "Your account has been deactivated.",
             });
             return;
         }
@@ -119,6 +124,7 @@ export const login = async (
             return;
         }
 
+        // Update last login
         await pool.query(
             `
             UPDATE users
@@ -128,11 +134,35 @@ export const login = async (
             [user.user_id]
         );
 
+        // Get all permissions assigned to the user's role
+        const permissionResult = await pool.query(
+            `
+            SELECT
+                p.permission_id,
+                p.module_name,
+                p.permission_name
+            FROM role_permissions rp
+            INNER JOIN permissions p
+                ON p.permission_id = rp.permission_id
+            WHERE rp.role = $1
+            ORDER BY
+                p.module_name,
+                p.permission_name;
+            `,
+            [user.role]
+        );
+
+        const permissionNames = permissionResult.rows.map(
+            (permission) => permission.permission_name
+        );
+
+        const permissions = permissionResult.rows;
 
         const token = jwt.sign(
             {
                 user_id: user.user_id,
                 role: user.role,
+                permissions: permissionNames,
             },
             process.env.JWT_SECRET || "secret",
             {
@@ -150,15 +180,22 @@ export const login = async (
         res.status(200).json({
             success: true,
             message: "Login successful",
+
+            token,
+
             user: {
                 user_id: user.user_id,
                 username: user.username,
                 first_name: user.first_name,
                 middle_name: user.middle_name,
-                email: user.email,
                 last_name: user.last_name,
+                email: user.email,
                 role: user.role,
+
+                permissions: permissionNames,
             },
+
+            permission_details: permissions,
         });
     } catch (error) {
         console.error(error);
@@ -279,7 +316,7 @@ export const updateUserStatus = async (
             UPDATE users
             SET status = $1
             WHERE user_id = $2
-            RETURNING user_id, first_name, last_name, email, role, status, on_duty, duty_start, duty_end
+            RETURNING user_id, first_name, last_name, email, role, status, on_duty
             `,
             [status, user_id]
         );
@@ -318,8 +355,6 @@ export const getAllUsers = async (
         role,
         status,
         on_duty,
-        duty_start,
-        duty_end,
         created_at,
         last_login
       FROM users
@@ -441,8 +476,6 @@ export const updateUser = async (
         role,
         status,
         on_duty,
-        duty_start,
-        duty_end,
         created_at,
         last_login
       `,
@@ -493,7 +526,6 @@ export const changeAccountDetails = async (
       first_name,
       middle_name,
       last_name,
-      username,
       email,
       password,
     } = req.body;
@@ -511,6 +543,25 @@ export const changeAccountDetails = async (
       return;
     }
 
+    // Prevent duplicate email
+    const emailExists = await pool.query(
+      `
+      SELECT user_id
+      FROM users
+      WHERE email = $1
+      AND user_id <> $2
+      `,
+      [email, user_id]
+    );
+
+    if (emailExists.rows.length > 0) {
+      res.status(400).json({
+        success: false,
+        message: "Email is already in use.",
+      });
+      return;
+    }
+
     let hashedPassword = existingUser.rows[0].password;
 
     if (password && password.trim() !== "") {
@@ -524,10 +575,9 @@ export const changeAccountDetails = async (
         first_name = $1,
         middle_name = $2,
         last_name = $3,
-        username = $4,
-        email = $5,
-        password = $6
-      WHERE user_id = $7
+        email = $4,
+        password = $5
+      WHERE user_id = $6
       RETURNING
         user_id,
         first_name,
@@ -537,15 +587,12 @@ export const changeAccountDetails = async (
         email,
         role,
         status,
-        on_duty,
-        duty_start,
-        duty_end
+        on_duty
       `,
       [
         first_name,
         middle_name,
         last_name,
-        username,
         email,
         hashedPassword,
         user_id,
@@ -563,6 +610,125 @@ export const changeAccountDetails = async (
     res.status(500).json({
       success: false,
       message: "Failed to update account",
+    });
+  }
+};
+
+export const changePassword = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const user_id = req.user?.user_id;
+
+    if (!user_id) {
+      res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+      return;
+    }
+
+    const {
+      current_password,
+      new_password,
+      confirm_password,
+    } = req.body;
+
+    if (
+      !current_password ||
+      !new_password ||
+      !confirm_password
+    ) {
+      res.status(400).json({
+        success: false,
+        message: "All password fields are required.",
+      });
+      return;
+    }
+
+    if (new_password !== confirm_password) {
+      res.status(400).json({
+        success: false,
+        message: "New password and confirm password do not match.",
+      });
+      return;
+    }
+
+    const existingUser = await pool.query(
+      `
+      SELECT password
+      FROM users
+      WHERE user_id = $1
+      `,
+      [user_id]
+    );
+
+    if (existingUser.rows.length === 0) {
+      res.status(404).json({
+        success: false,
+        message: "User not found.",
+      });
+      return;
+    }
+
+    const user = existingUser.rows[0];
+
+    // Verify current password
+    const isMatch = await bcrypt.compare(
+      current_password,
+      user.password
+    );
+
+    if (!isMatch) {
+      res.status(400).json({
+        success: false,
+        message: "Current password is incorrect.",
+      });
+      return;
+    }
+
+    // Prevent using the same password
+    const isSamePassword = await bcrypt.compare(
+      new_password,
+      user.password
+    );
+
+    if (isSamePassword) {
+      res.status(400).json({
+        success: false,
+        message: "New password must be different from your current password.",
+      });
+      return;
+    }
+
+    const hashedPassword = await bcrypt.hash(
+      new_password,
+      10
+    );
+
+    await pool.query(
+      `
+      UPDATE users
+      SET password = $1
+      WHERE user_id = $2
+      `,
+      [
+        hashedPassword,
+        user_id,
+      ]
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Password changed successfully.",
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to change password.",
     });
   }
 };
@@ -593,62 +759,82 @@ export const logout = async (
 };
 
 export const getCurrentUser = async (
-  req: Request,
-  res: Response
+    req: Request,
+    res: Response
 ): Promise<void> => {
-  try {
-     console.log("GET CURRENT USER HIT");
+    try {
+        if (!req.user?.user_id) {
+            res.status(401).json({
+                success: false,
+                message: "Unauthorized: Invalid user session",
+            });
+            return;
+        }
 
-    // Validate that user_id exists (should be set by middleware)
-    if (!req.user?.user_id) {
-      res.status(401).json({
-        success: false,
-        message: "Unauthorized: Invalid user session",
-      });
-      return;
+        const userResult = await pool.query(
+            `
+            SELECT
+                user_id,
+                first_name,
+                middle_name,
+                last_name,
+                username,
+                email,
+                role,
+                status,
+                on_duty
+            FROM users
+            WHERE user_id = $1
+            `,
+            [req.user.user_id]
+        );
+
+        if (userResult.rows.length === 0) {
+            res.status(404).json({
+                success: false,
+                message: "User not found.",
+            });
+            return;
+        }
+
+        const user = userResult.rows[0];
+
+        // Get permissions assigned to the user's role
+        const permissionResult = await pool.query(
+            `
+            SELECT
+                p.permission_id,
+                p.module_name,
+                p.permission_name
+            FROM role_permissions rp
+            INNER JOIN permissions p
+                ON p.permission_id = rp.permission_id
+            WHERE rp.role = $1
+            ORDER BY
+                p.module_name,
+                p.permission_name;
+            `,
+            [user.role]
+        );
+
+        res.status(200).json({
+            success: true,
+
+            user: {
+                ...user,
+
+                permissions: permissionResult.rows,
+            },
+        });
+    } catch (error) {
+        console.error("Error in getCurrentUser:", error);
+
+        res.status(500).json({
+            success: false,
+            message: "Failed to fetch current user.",
+        });
     }
-
-    const result = await pool.query(
-      `
-      SELECT
-        user_id,
-        first_name,
-        middle_name,
-        last_name,
-        username,
-        email,
-        role,
-        status,
-        on_duty,
-        duty_start,
-        duty_end
-      FROM users
-      WHERE user_id = $1
-      `,
-      [req.user.user_id]
-    );
-
-    if (result.rows.length === 0) {
-      res.status(404).json({
-        success: false,
-        message: "User not found in database",
-      });
-      return;
-    }
-
-    res.status(200).json({
-      success: true,
-      user: result.rows[0],
-    });
-  } catch (error) {
-    console.error("Error in getCurrentUser:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch user",
-    });
-  }
 };
-
 export const getUserById = async (
     req: Request,
     res: Response
@@ -668,8 +854,6 @@ export const getUserById = async (
                 role,
                 status,
                 on_duty,
-                duty_start,
-                duty_end,
                 created_at,
                 last_login
             FROM users
@@ -752,136 +936,39 @@ export const getSecurityPersonnel = async (
     res: Response
 ): Promise<void> => {
     try {
-        const { onDuty } = req.query;
-
-        let query = `
+        const { rows } = await pool.query(`
             SELECT
                 user_id,
                 first_name,
                 middle_name,
                 last_name,
+                CONCAT(
+                    first_name,
+                    ' ',
+                    COALESCE(middle_name || ' ', ''),
+                    last_name
+                ) AS full_name,
                 username,
                 email,
-                on_duty,
-                duty_start,
-                duty_end
+                on_duty
             FROM users
             WHERE
                 role = 'Security Personnel'
-                AND status = true
-        `;
-
-        if (onDuty === "true") {
-            query += " AND on_duty = true";
-        }
-
-        query += " ORDER BY first_name, last_name";
-
-        const { rows } = await pool.query(query);
+                AND status = TRUE
+            ORDER BY first_name, last_name
+        `);
 
         res.status(200).json({
             success: true,
             personnel: rows,
         });
+
     } catch (error) {
         console.error(error);
 
         res.status(500).json({
             success: false,
             message: "Failed to fetch security personnel.",
-        });
-    }
-};
-
-export const setDutySchedule = async (
-    req: Request,
-    res: Response
-): Promise<void> => {
-    try {
-        const { user_id } = req.params;
-        const { duty_start, duty_end } = req.body;
-
-        if (!duty_start || !duty_end) {
-            res.status(400).json({
-                success: false,
-                message: "Duty start and duty end are required.",
-            });
-            return;
-        }
-
-        const { rows } = await pool.query(
-            `
-            SELECT
-                user_id,
-                role,
-                duty_start,
-                duty_end
-            FROM users
-            WHERE user_id = $1
-            `,
-            [user_id]
-        );
-
-        if (rows.length === 0) {
-            res.status(404).json({
-                success: false,
-                message: "User not found.",
-            });
-            return;
-        }
-
-        const user = rows[0];
-
-        if (user.role !== "Security Personnel") {
-            res.status(400).json({
-                success: false,
-                message: "Only Security Personnel can have a duty schedule.",
-            });
-            return;
-        }
-
-        if (user.duty_start || user.duty_end) {
-            res.status(400).json({
-                success: false,
-                message: "Duty schedule has already been assigned.",
-            });
-            return;
-        }
-
-        const result = await pool.query(
-            `
-            UPDATE users
-            SET
-                duty_start = $1,
-                duty_end = $2
-            WHERE user_id = $3
-            RETURNING
-                user_id,
-                first_name,
-                last_name,
-                duty_start,
-                duty_end,
-                on_duty;
-            `,
-            [
-                duty_start,
-                duty_end,
-                user_id,
-            ]
-        );
-
-        res.status(200).json({
-            success: true,
-            message: "Duty schedule assigned successfully.",
-            user: result.rows[0],
-        });
-
-    } catch (error) {
-        console.error(error);
-
-        res.status(500).json({
-            success: false,
-            message: "Failed to assign duty schedule.",
         });
     }
 };
