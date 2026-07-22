@@ -12,14 +12,28 @@ import RolePermissionRoutes from "./modules/Role_Permissions/Role_Permissions.ro
 const app = express();
 
 app.use(cookieParser());
-app.use(cors(
-    {
-      origin: process.env.CLIENT_URL || "http://localhost:5173",
-      credentials: true,
-      methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
-      allowedHeaders:["Content-Type", "Authorization"]
-    }
-));
+
+const allowedOrigins = [
+  "http://localhost:5173",
+  process.env.CLIENT_URL!,
+].filter(Boolean);
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      callback(new Error("Not allowed by CORS"));
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
 
 app.use((req, res, next) => {
   console.log("REQUEST:", req.method, req.originalUrl);
