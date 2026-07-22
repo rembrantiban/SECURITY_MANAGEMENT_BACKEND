@@ -5,37 +5,37 @@ import bcrypt from "bcrypt";
 
 
 export const register = async (
-    req: Request,
-    res: Response
+  req: Request,
+  res: Response
 ): Promise<void> => {
-    try {
-        const {
-            first_name,
-            middle_name,
-            last_name,
-            username,
-            email,
-            password,
-            role,
-        } = req.body;
+  try {
+    const {
+      first_name,
+      middle_name,
+      last_name,
+      username,
+      email,
+      password,
+      role,
+    } = req.body;
 
-        const existingUser = await pool.query(
-            "SELECT * FROM users WHERE email = $1 OR username = $2",
-            [email, username]
-        );
+    const existingUser = await pool.query(
+      "SELECT * FROM users WHERE email = $1 OR username = $2",
+      [email, username]
+    );
 
-        if (existingUser.rows.length > 0) {
-            res.status(400).json({
-                success: false,
-                message: "User already exists",
-            });
-            return;
-        }
+    if (existingUser.rows.length > 0) {
+      res.status(400).json({
+        success: false,
+        message: "User already exists",
+      });
+      return;
+    }
 
-        const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, 10);
 
-        const result = await pool.query(
-            `
+    const result = await pool.query(
+      `
             INSERT INTO users
             (
                 first_name,
@@ -49,94 +49,94 @@ export const register = async (
             VALUES($1,$2,$3,$4,$5,$6,$7)
             RETURNING *
             `,
-            [  
-                first_name,
-                middle_name,
-                last_name,
-                username,
-                email,
-                hashedPassword,
-                role,
-            ]
-        );
+      [
+        first_name,
+        middle_name,
+        last_name,
+        username,
+        email,
+        hashedPassword,
+        role,
+      ]
+    );
 
-        res.status(201).json({
-            success: true,
-            message: "User registered successfully",
-            user: result.rows[0],
-        });
-    } catch (error) {
-        console.error(error);
+    res.status(201).json({
+      success: true,
+      message: "User registered successfully",
+      user: result.rows[0],
+    });
+  } catch (error) {
+    console.error(error);
 
-        res.status(500).json({
-            success: false,
-            message: "Registration failed",
-        });
-    }
+    res.status(500).json({
+      success: false,
+      message: "Registration failed",
+    });
+  }
 };
 
 
 export const login = async (
-    req: Request,
-    res: Response
+  req: Request,
+  res: Response
 ): Promise<void> => {
-    try {
-        const { login, password } = req.body;
+  try {
+    const { login, password } = req.body;
 
-        const result = await pool.query(
-            `
+    const result = await pool.query(
+      `
             SELECT *
             FROM users
             WHERE email = $1
                OR username = $2
             `,
-            [login, login]
-        );
+      [login, login]
+    );
 
-        if (result.rows.length === 0) {
-            res.status(401).json({
-                success: false,
-                message: "Invalid credentials",
-            });
-            return;
-        }
+    if (result.rows.length === 0) {
+      res.status(401).json({
+        success: false,
+        message: "Invalid credentials",
+      });
+      return;
+    }
 
-        const user = result.rows[0];
+    const user = result.rows[0];
 
-        if (!user.status) {
-            res.status(403).json({
-                success: false,
-                message: "Your account has been deactivated.",
-            });
-            return;
-        }
+    if (!user.status) {
+      res.status(403).json({
+        success: false,
+        message: "Your account has been deactivated.",
+      });
+      return;
+    }
 
-        const isMatch = await bcrypt.compare(
-            password,
-            user.password
-        );
+    const isMatch = await bcrypt.compare(
+      password,
+      user.password
+    );
 
-        if (!isMatch) {
-            res.status(401).json({
-                success: false,
-                message: "Invalid credentials",
-            });
-            return;
-        }
+    if (!isMatch) {
+      res.status(401).json({
+        success: false,
+        message: "Invalid credentials",
+      });
+      return;
+    }
 
-        // Update last login
-        await pool.query(
-            `
+    // Update last login
+    await pool.query(
+      `
             UPDATE users
             SET last_login = CURRENT_TIMESTAMP
             WHERE user_id = $1
             `,
-            [user.user_id]
-        );
+      [user.user_id]
+    );
 
-        // Get all permissions assigned to the user's role
-        const permissionResult = await pool.query(
-            `
+    // Get all permissions assigned to the user's role
+    const permissionResult = await pool.query(
+      `
             SELECT
                 p.permission_id,
                 p.module_name,
@@ -149,100 +149,100 @@ export const login = async (
                 p.module_name,
                 p.permission_name;
             `,
-            [user.role]
-        );
+      [user.role]
+    );
 
-        const permissionNames = permissionResult.rows.map(
-            (permission) => permission.permission_name
-        );
+    const permissionNames = permissionResult.rows.map(
+      permission => permission.permission_name
+    );
 
-        const permissions = permissionResult.rows;
+    const permissions = permissionResult.rows;
 
-        const token = jwt.sign(
-            {
-                user_id: user.user_id,
-                role: user.role,
-                permissions: permissionNames,
-            },
-            process.env.JWT_SECRET || "secret",
-            {
-                expiresIn: "1d",
-            }
-        );
+    const token = jwt.sign(
+      {
+        user_id: user.user_id,
+        role: user.role,
+        permissions: permissionNames,
+      },
+      process.env.JWT_SECRET || "secret",
+      {
+        expiresIn: "1d",
+      }
+    );
 
-        res.cookie("token", token, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "strict",
-            maxAge: 24 * 60 * 60 * 1000,
-        });
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 24 * 60 * 60 * 1000,
+    });
 
-        res.status(200).json({
-            success: true,
-            message: "Login successful",
+    res.status(200).json({
+      success: true,
+      message: "Login successful",
 
-            token,
+      token,
 
-            user: {
-                user_id: user.user_id,
-                username: user.username,
-                first_name: user.first_name,
-                middle_name: user.middle_name,
-                last_name: user.last_name,
-                email: user.email,
-                role: user.role,
+      user: {
+        user_id: user.user_id,
+        username: user.username,
+        first_name: user.first_name,
+        middle_name: user.middle_name,
+        last_name: user.last_name,
+        email: user.email,
+        role: user.role,
 
-                permissions: permissionNames,
-            },
+       permissions: permissions, 
+      },
 
-            permission_details: permissions,
-        });
-    } catch (error) {
-        console.error(error);
+      permission_details: permissions,
+    });
+  } catch (error) {
+    console.error(error);
 
-        res.status(500).json({
-            success: false,
-            message: "Login failed",
-        });
-    }
+    res.status(500).json({
+      success: false,
+      message: "Login failed",
+    });
+  }
 };
 
 
 export const createUserByAdmin = async (
-    req: Request,
-    res: Response
+  req: Request,
+  res: Response
 ): Promise<void> => {
-    try {
-        const {
-            first_name,
-            middle_name,
-            last_name,
-            username,
-            email,
-            password,
-            role,
-        } = req.body;
+  try {
+    const {
+      first_name,
+      middle_name,
+      last_name,
+      username,
+      email,
+      password,
+      role,
+    } = req.body;
 
-        const existing = await pool.query(
-            "SELECT * FROM users WHERE email = $1 OR username = $2",
-            [email, username]
-        );
+    const existing = await pool.query(
+      "SELECT * FROM users WHERE email = $1 OR username = $2",
+      [email, username]
+    );
 
-        if (existing.rows.length > 0) {
-            res.status(400).json({
-                success: false,
-                message: "User already exists",
-            });
-            return;
-        }
+    if (existing.rows.length > 0) {
+      res.status(400).json({
+        success: false,
+        message: "User already exists",
+      });
+      return;
+    }
 
-        const hashedPassword = await bcrypt.hash(
-            password,
-            10
-        );
+    const hashedPassword = await bcrypt.hash(
+      password,
+      10
+    );
 
-        const result = await pool.query(
-            `
+    const result = await pool.query(
+      `
             INSERT INTO users
             (
                 first_name,
@@ -256,95 +256,95 @@ export const createUserByAdmin = async (
             VALUES($1,$2,$3,$4,$5,$6,$7)
             RETURNING *
             `,
-            [
-                first_name,
-                middle_name,
-                last_name,
-                username,
-                email,
-                hashedPassword,
-                role,
-            ]
-        );
+      [
+        first_name,
+        middle_name,
+        last_name,
+        username,
+        email,
+        hashedPassword,
+        role,
+      ]
+    );
 
-        res.status(201).json({
-            success: true,
-            message: "User created successfully",
-            user: result.rows[0],
-        });
-    } catch (error) {
-        console.error(error);
+    res.status(201).json({
+      success: true,
+      message: "User created successfully",
+      user: result.rows[0],
+    });
+  } catch (error) {
+    console.error(error);
 
-        res.status(500).json({
-            success: false,
-            message: "Failed to create user",
-        });
-    }
+    res.status(500).json({
+      success: false,
+      message: "Failed to create user",
+    });
+  }
 };
 
 export const updateUserStatus = async (
-    req: Request,
-    res: Response
+  req: Request,
+  res: Response
 ): Promise<void> => {
-    try {
-        const { user_id } = req.params;
-        const { status } = req.body;
+  try {
+    const { user_id } = req.params;
+    const { status } = req.body;
 
-        if (typeof status !== "boolean") {
-            res.status(400).json({
-                success: false,
-                message: "Status must be true or false",
-            });
-            return;
-        }
+    if (typeof status !== "boolean") {
+      res.status(400).json({
+        success: false,
+        message: "Status must be true or false",
+      });
+      return;
+    }
 
-        const user = await pool.query(
-            "SELECT * FROM users WHERE user_id = $1",
-            [user_id]
-        );
+    const user = await pool.query(
+      "SELECT * FROM users WHERE user_id = $1",
+      [user_id]
+    );
 
-        if (user.rows.length === 0) {
-            res.status(404).json({
-                success: false,
-                message: "User not found",
-            });
-            return;
-        }
+    if (user.rows.length === 0) {
+      res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+      return;
+    }
 
-        const result = await pool.query(
-            `
+    const result = await pool.query(
+      `
             UPDATE users
             SET status = $1
             WHERE user_id = $2
             RETURNING user_id, first_name, last_name, email, role, status, on_duty
             `,
-            [status, user_id]
-        );
+      [status, user_id]
+    );
 
-        res.status(200).json({
-            success: true,
-            message: status
-                ? "User activated successfully"
-                : "User deactivated successfully",
-            user: result.rows[0],
-        });
-    } catch (error) {
-        console.error(error);
+    res.status(200).json({
+      success: true,
+      message: status
+        ? "User activated successfully"
+        : "User deactivated successfully",
+      user: result.rows[0],
+    });
+  } catch (error) {
+    console.error(error);
 
-        res.status(500).json({
-            success: false,
-            message: "Failed to update user status",
-        });
-    }
+    res.status(500).json({
+      success: false,
+      message: "Failed to update user status",
+    });
+  }
 };
 
 
 export const getAllUsers = async (
-    req: Request,
-    res: Response
+  req: Request,
+  res: Response
 ): Promise<void> => {
-    try {
-        const result = await pool.query(`
+  try {
+    const result = await pool.query(`
       SELECT
         user_id,
         first_name,
@@ -365,18 +365,18 @@ export const getAllUsers = async (
       ORDER BY created_at DESC
     `);
 
-        res.status(200).json({
-            success: true,
-            users: result.rows,
-        });
-    } catch (error) {
-        console.error(error);
+    res.status(200).json({
+      success: true,
+      users: result.rows,
+    });
+  } catch (error) {
+    console.error(error);
 
-        res.status(500).json({
-            success: false,
-            message: "Failed to fetch users",
-        });
-    }
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch users",
+    });
+  }
 };
 
 export const deleteUser = async (
@@ -759,20 +759,20 @@ export const logout = async (
 };
 
 export const getCurrentUser = async (
-    req: Request,
-    res: Response
+  req: Request,
+  res: Response
 ): Promise<void> => {
-    try {
-        if (!req.user?.user_id) {
-            res.status(401).json({
-                success: false,
-                message: "Unauthorized: Invalid user session",
-            });
-            return;
-        }
+  try {
+    if (!req.user?.user_id) {
+      res.status(401).json({
+        success: false,
+        message: "Unauthorized: Invalid user session",
+      });
+      return;
+    }
 
-        const userResult = await pool.query(
-            `
+    const userResult = await pool.query(
+      `
             SELECT
                 user_id,
                 first_name,
@@ -786,22 +786,22 @@ export const getCurrentUser = async (
             FROM users
             WHERE user_id = $1
             `,
-            [req.user.user_id]
-        );
+      [req.user.user_id]
+    );
 
-        if (userResult.rows.length === 0) {
-            res.status(404).json({
-                success: false,
-                message: "User not found.",
-            });
-            return;
-        }
+    if (userResult.rows.length === 0) {
+      res.status(404).json({
+        success: false,
+        message: "User not found.",
+      });
+      return;
+    }
 
-        const user = userResult.rows[0];
+    const user = userResult.rows[0];
 
-        // Get permissions assigned to the user's role
-        const permissionResult = await pool.query(
-            `
+    // Get permissions assigned to the user's role
+    const permissionResult = await pool.query(
+      `
             SELECT
                 p.permission_id,
                 p.module_name,
@@ -814,36 +814,36 @@ export const getCurrentUser = async (
                 p.module_name,
                 p.permission_name;
             `,
-            [user.role]
-        );
+      [user.role]
+    );
 
-        res.status(200).json({
-            success: true,
+    res.status(200).json({
+      success: true,
 
-            user: {
-                ...user,
+      user: {
+        ...user,
 
-                permissions: permissionResult.rows,
-            },
-        });
-    } catch (error) {
-        console.error("Error in getCurrentUser:", error);
+        permissions: permissionResult.rows,
+      },
+    });
+  } catch (error) {
+    console.error("Error in getCurrentUser:", error);
 
-        res.status(500).json({
-            success: false,
-            message: "Failed to fetch current user.",
-        });
-    }
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch current user.",
+    });
+  }
 };
 export const getUserById = async (
-    req: Request,
-    res: Response
+  req: Request,
+  res: Response
 ): Promise<void> => {
-    try {
-        const { user_id } = req.params;
+  try {
+    const { user_id } = req.params;
 
-        const { rows } = await pool.query(
-            `
+    const { rows } = await pool.query(
+      `
             SELECT
                 user_id,
                 first_name,
@@ -859,29 +859,29 @@ export const getUserById = async (
             FROM users
             WHERE user_id = $1
             `,
-            [user_id]
-        );
+      [user_id]
+    );
 
-        if (rows.length === 0) {
-            res.status(404).json({
-                success: false,
-                message: "User not found.",
-            });
-            return;
-        }
-
-        res.status(200).json({
-            success: true,
-            user: rows[0],
-        });
-    } catch (error) {
-        console.error(error);
-
-        res.status(500).json({
-            success: false,
-            message: "Failed to fetch user.",
-        });
+    if (rows.length === 0) {
+      res.status(404).json({
+        success: false,
+        message: "User not found.",
+      });
+      return;
     }
+
+    res.status(200).json({
+      success: true,
+      user: rows[0],
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch user.",
+    });
+  }
 };
 
 export const getUserStatistics = async (
@@ -932,11 +932,11 @@ export const getUserStatistics = async (
 }
 
 export const getSecurityPersonnel = async (
-    req: Request,
-    res: Response
+  req: Request,
+  res: Response
 ): Promise<void> => {
-    try {
-        const { rows } = await pool.query(`
+  try {
+    const { rows } = await pool.query(`
             SELECT
                 user_id,
                 first_name,
@@ -958,17 +958,17 @@ export const getSecurityPersonnel = async (
             ORDER BY first_name, last_name
         `);
 
-        res.status(200).json({
-            success: true,
-            personnel: rows,
-        });
+    res.status(200).json({
+      success: true,
+      personnel: rows,
+    });
 
-    } catch (error) {
-        console.error(error);
+  } catch (error) {
+    console.error(error);
 
-        res.status(500).json({
-            success: false,
-            message: "Failed to fetch security personnel.",
-        });
-    }
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch security personnel.",
+    });
+  }
 };
