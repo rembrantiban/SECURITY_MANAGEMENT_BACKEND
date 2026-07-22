@@ -44,9 +44,10 @@ export const register = async (
                 username,
                 email,
                 password,
-                role
+                role,
+                approval_status
             )
-            VALUES($1,$2,$3,$4,$5,$6,$7)
+            VALUES($1,$2,$3,$4,$5,$6,$7, 'Pending')
             RETURNING *
             `,
       [
@@ -111,6 +112,15 @@ export const login = async (
       return;
     }
 
+
+    if (user.approval_status !== "Approved") {
+      res.status(403).json({
+        success: false,
+        message: "Your account is not yet approved.",
+      });
+      return;
+    }
+
     const isMatch = await bcrypt.compare(
       password,
       user.password
@@ -134,7 +144,6 @@ export const login = async (
       [user.user_id]
     );
 
-    // Get all permissions assigned to the user's role
     const permissionResult = await pool.query(
       `
             SELECT
@@ -243,19 +252,20 @@ export const createUserByAdmin = async (
 
     const result = await pool.query(
       `
-            INSERT INTO users
-            (
-                first_name,
-                middle_name,
-                last_name,
-                username,
-                email,
-                password,
-                role
-            )
-            VALUES($1,$2,$3,$4,$5,$6,$7)
-            RETURNING *
-            `,
+    INSERT INTO users
+    (
+        first_name,
+        middle_name,
+        last_name,
+        username,
+        email,
+        password,
+        role,
+        approval_status
+    )
+    VALUES($1,$2,$3,$4,$5,$6,$7,'Approved')
+    RETURNING *
+    `,
       [
         first_name,
         middle_name,
@@ -316,7 +326,7 @@ export const updateUserStatus = async (
             UPDATE users
             SET status = $1
             WHERE user_id = $2
-            RETURNING user_id, first_name, last_name, email, role, status, on_duty
+            RETURNING user_id, first_name, last_name, email, role, status, approval_status, on_duty
             `,
       [status, user_id]
     );
@@ -353,6 +363,7 @@ export const getAllUsers = async (
         username,
         email,
         role,
+        approval_status,  
         status,
         on_duty,
         created_at,
@@ -474,6 +485,7 @@ export const updateUser = async (
         username,
         email,
         role,
+        approval_status,
         status,
         on_duty,
         created_at,
@@ -782,6 +794,7 @@ export const getCurrentUser = async (
                 email,
                 role,
                 status,
+                approval_status,
                 on_duty
             FROM users
             WHERE user_id = $1
@@ -852,6 +865,7 @@ export const getUserById = async (
                 username,
                 email,
                 role,
+                approval_status,
                 status,
                 on_duty,
                 created_at,
@@ -889,7 +903,7 @@ export const getUserStatistics = async (
   res: Response
 ): Promise<void> => {
   try {
-   const result = await pool.query(`
+    const result = await pool.query(`
       SELECT
         COUNT(*) AS total_users,
 
@@ -915,7 +929,7 @@ export const getUserStatistics = async (
       stats: {
         totalUsers: Number(stats.total_users),
         activeUsers: Number(stats.active_users),
-        administrators: Number(stats.administrators),
+        administrators: Number(stats.authorized_staff),
         disabledUsers: Number(stats.disabled_users),
       },
     });
@@ -967,6 +981,98 @@ export const getSecurityPersonnel = async (
     res.status(500).json({
       success: false,
       message: "Failed to fetch security personnel.",
+    });
+  }
+};
+
+export const updateApprovalStatus = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { user_id } = req.params;
+    const { approval_status } = req.body;
+
+    const allowedStatuses = [
+      "Pending",
+      "Approved",
+      "Rejected",
+    ];
+
+    if (!allowedStatuses.includes(approval_status)) {
+      res.status(400).json({
+        success: false,
+        message:
+          "Approval status must be Pending, Approved, or Rejected.",
+      });
+      return;
+    }
+
+    const existingUser = await pool.query(
+      `
+      SELECT user_id
+      FROM users
+      WHERE user_id = $1
+      `,
+      [user_id]
+    );
+
+    if (existingUser.rows.length === 0) {
+      res.status(404).json({
+        success: false,
+        message: "User not found.",
+      });
+      return;
+    }
+
+    const result = await pool.query(
+      `
+      UPDATE users
+      SET approval_status = $1
+      WHERE user_id = $2
+      RETURNING
+        user_id,
+        first_name,
+        middle_name,
+        last_name,
+        username,
+        email,
+        role,
+        approval_status,
+        status,
+        on_duty,
+        created_at,
+        last_login
+      `,
+      [approval_status, user_id]
+    );
+
+    let message = "";
+
+    switch (approval_status) {
+      case "Approved":
+        message = "Account approved successfully.";
+        break;
+
+      case "Rejected":
+        message = "Account rejected successfully.";
+        break;
+
+      default:
+        message = "Approval status updated successfully.";
+    }
+
+    res.status(200).json({
+      success: true,
+      message,
+      user: result.rows[0],
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to update approval status.",
     });
   }
 };
