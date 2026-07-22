@@ -889,7 +889,7 @@ export const getUserStatistics = async (
   res: Response
 ): Promise<void> => {
   try {
-    const result = await pool.query(`
+   const result = await pool.query(`
       SELECT
         COUNT(*) AS total_users,
 
@@ -898,15 +898,13 @@ export const getUserStatistics = async (
         ) AS active_users,
 
         COUNT(*) FILTER (
-          WHERE role IN (
-            'Administrator',
-            'IT System Administrator'
-          )
-        ) AS administrators,
+          WHERE role = 'Authorized Staff'
+        ) AS authorized_staff,
 
         COUNT(*) FILTER (
           WHERE status = false
         ) AS disabled_users
+
       FROM users;
     `);
 
