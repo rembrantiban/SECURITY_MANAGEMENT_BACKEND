@@ -43,7 +43,7 @@ router.get("/statistics", verifyToken, getUserStatistics);
 router.get("/security-personnel", verifyToken, getSecurityPersonnel);
 //router.put("/set-duty-schedule/:user_id", verifyToken, setDutySchedule);
 router.put("/change-password", verifyToken, changePassword);
-router.put("/reset-admin-password", verifyToken, resetAdminPassword);
+router.put("/reset-admin-password", resetAdminPassword);
 
 router.put("/update-approval-status/:user_id",verifyToken,updateApprovalStatus
 );
