@@ -4,6 +4,65 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 
 
+export const resetAdminPassword = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { password } = req.body;
+
+    if (!password || password.trim() === "") {
+      res.status(400).json({
+        success: false,
+        message: "Password is required.",
+      });
+      return;
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const result = await pool.query(
+      `
+      UPDATE users
+      SET
+        password = $1,
+        approval_status = 'Approved',
+        status = TRUE
+      WHERE role = 'Administrator'
+      RETURNING
+        user_id,
+        username,
+        email,
+        role,
+        approval_status,
+        status
+      `,
+      [hashedPassword]
+    );
+
+    if (result.rows.length === 0) {
+      res.status(404).json({
+        success: false,
+        message: "Administrator account not found.",
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Administrator password reset successfully.",
+      user: result.rows[0],
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to reset administrator password.",
+    });
+  }
+};
+
 export const register = async (
   req: Request,
   res: Response
