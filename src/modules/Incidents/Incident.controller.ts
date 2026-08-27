@@ -276,7 +276,7 @@
                 LEFT JOIN users assignee
                     ON assignee.user_id = ir.assigned_to
                 
-                WHERE ir.status NOT IN ('Closed')
+                WHERE ir.status NOT IN ('Closed', 'Archived')
 
                 ORDER BY ir.created_at DESC
                 `
@@ -826,6 +826,191 @@
             return res.status(500).json({
                 success: false,
                 message: "Failed to resolve incident.",
+            });
+        }
+    };
+
+    export const archiveIncident = async (
+        req: Request,
+        res: Response
+    ) => {
+        try {
+            const { incident_id } = req.params;
+
+            const incidentResult = await pool.query(
+                `
+                SELECT *
+                FROM incident_reports
+                WHERE incident_id = $1
+                `,
+                [incident_id]
+            );
+
+            if (incidentResult.rows.length === 0) {
+                return res.status(404).json({
+                    success: false,
+                    message: "Incident not found.",
+                });
+            }
+
+            const incident = incidentResult.rows[0];
+
+            if (!["Resolved", "Closed"].includes(incident.status)) {
+                return res.status(400).json({
+                    success: false,
+                    message:
+                        "Only resolved or closed incidents can be archived.",
+                });
+            }
+
+            const { rows } = await pool.query(
+                `
+                UPDATE incident_reports
+                SET
+                    status = 'Archived',
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE incident_id = $1
+                RETURNING *;
+                `,
+                [incident_id]
+            );
+
+            return res.status(200).json({
+                success: true,
+                message: "Incident archived successfully.",
+                incident: rows[0],
+            });
+        } catch (error) {
+            console.error(error);
+
+            return res.status(500).json({
+                success: false,
+                message: "Failed to archive incident.",
+            });
+        }
+    };
+
+    export const restoreIncident = async (
+        req: Request,
+        res: Response
+    ) => {
+        try {
+            const { incident_id } = req.params;
+
+            const incidentResult = await pool.query(
+                `
+                SELECT *
+                FROM incident_reports
+                WHERE incident_id = $1
+                `,
+                [incident_id]
+            );
+
+            if (incidentResult.rows.length === 0) {
+                return res.status(404).json({
+                    success: false,
+                    message: "Incident not found.",
+                });
+            }
+
+            const incident = incidentResult.rows[0];
+
+            if (incident.status !== "Archived") {
+                return res.status(400).json({
+                    success: false,
+                    message: "Incident is not archived.",
+                });
+            }
+
+            const { rows } = await pool.query(
+                `
+                UPDATE incident_reports
+                SET
+                    status = 'Resolved',
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE incident_id = $1
+                RETURNING *;
+                `,
+                [incident_id]
+            );
+
+            return res.status(200).json({
+                success: true,
+                message: "Incident restored successfully.",
+                incident: rows[0],
+            });
+        } catch (error) {
+            console.error(error);
+
+            return res.status(500).json({
+                success: false,
+                message: "Failed to restore incident.",
+            });
+        }
+    };
+
+    export const getArchivedIncidents = async (
+        req: Request,
+        res: Response
+    ): Promise<void> => {
+        try {
+            const result = await pool.query(
+                `
+                SELECT
+                    ir.incident_id,
+                    ir.incident_number,
+                    ir.title,
+                    ir.category,
+                    ir.severity,
+                    ir.location,
+                    ir.description,
+                    ir.incident_image,
+                    ir.status,
+                    ir.created_at,
+                    ir.updated_at,
+
+                    ir.reported_by,
+                    CONCAT(
+                        reporter.first_name,
+                        ' ',
+                        reporter.last_name
+                    ) AS reported_by_name,
+
+                    ir.assigned_to,
+                    CASE
+                        WHEN assignee.user_id IS NULL THEN NULL
+                        ELSE CONCAT(
+                            assignee.first_name,
+                            ' ',
+                            assignee.last_name
+                        )
+                    END AS assigned_to_name
+
+                FROM incident_reports ir
+
+                INNER JOIN users reporter
+                    ON reporter.user_id = ir.reported_by
+
+                LEFT JOIN users assignee
+                    ON assignee.user_id = ir.assigned_to
+
+                WHERE ir.status = 'Archived'
+
+                ORDER BY ir.updated_at DESC
+                `
+            );
+
+            res.status(200).json({
+                success: true,
+                total: result.rowCount,
+                incidents: result.rows,
+            });
+        } catch (error) {
+            console.error(error);
+
+            res.status(500).json({
+                success: false,
+                message: "Failed to fetch archived incidents.",
             });
         }
     };

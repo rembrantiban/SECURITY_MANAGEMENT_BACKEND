@@ -5,13 +5,16 @@ import { createIncidentReport,
          getMyIncidentReports,
          getUserAssignedIncidents,
          assignIncident,
-         reAssignIncident, 
-         closeIncident,  
+         reAssignIncident,
+         closeIncident,
          getIncidentStatistics,
-         getMyAssignedIncidents,        
+         getMyAssignedIncidents,
          getPersonnelDashboardStats,
          ResolveIncident,
          updateIncident,
+         archiveIncident,
+         restoreIncident,
+         getArchivedIncidents,
 } from "./Incident.controller";
 import { verifyToken } from "../../middleware/protectedRoute"
 
@@ -28,6 +31,9 @@ router.put("/close/:incident_id", verifyToken, closeIncident);
 router.put("/resolve/:incident_id", verifyToken, ResolveIncident);
 router.get("/statistics", verifyToken, getIncidentStatistics);
 router.get("/my-assigned-incidents", verifyToken, getMyAssignedIncidents);
-router.get("/personnel-dashboard-stats", verifyToken, getPersonnelDashboardStats);    
+router.get("/personnel-dashboard-stats", verifyToken, getPersonnelDashboardStats);
+router.get("/archived", verifyToken, getArchivedIncidents);
+router.put("/archive/:incident_id", verifyToken, archiveIncident);
+router.put("/restore/:incident_id", verifyToken, restoreIncident);
 
 export default router;

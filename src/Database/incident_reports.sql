@@ -23,7 +23,8 @@ CREATE TABLE incident_reports (
                 'Pending',
                 'In Progress',
                 'Resolved',
-                'Closed'
+                'Closed',
+                'Archived'
             )
         ),
     note TEXT,
