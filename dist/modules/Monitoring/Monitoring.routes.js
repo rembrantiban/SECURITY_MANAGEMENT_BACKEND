@@ -1,0 +1,13 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const protectedRoute_1 = require("../../middleware/protectedRoute");
+const Monitoring_controller_1 = require("./Monitoring.controller");
+const router = (0, express_1.Router)();
+router.post("/create", protectedRoute_1.verifyToken, Monitoring_controller_1.createMonitoringSchedule);
+router.get("/getAll", protectedRoute_1.verifyToken, Monitoring_controller_1.getMonitoringSchedules);
+router.put("/update/:schedule_id", protectedRoute_1.verifyToken, Monitoring_controller_1.updateMonitoringSchedule);
+router.delete("/delete/:schedule_id", protectedRoute_1.verifyToken, Monitoring_controller_1.deleteMonitoringSchedule);
+router.patch("/update-status/:schedule_id/status", protectedRoute_1.verifyToken, Monitoring_controller_1.updateMonitoringScheduleStatus);
+router.get("/getMySchedules", protectedRoute_1.verifyToken, Monitoring_controller_1.getMyMonitoringSchedules);
+exports.default = router;

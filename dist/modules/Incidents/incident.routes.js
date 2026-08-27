@@ -1,0 +1,23 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = __importDefault(require("express"));
+const upload_1 = __importDefault(require("../../middleware/upload"));
+const Incident_controller_1 = require("./Incident.controller");
+const protectedRoute_1 = require("../../middleware/protectedRoute");
+const router = express_1.default.Router();
+router.post("/create-incident", protectedRoute_1.verifyToken, upload_1.default.single("incident_image"), Incident_controller_1.createIncidentReport);
+router.put("/update/:incident_id", protectedRoute_1.verifyToken, upload_1.default.single("incident_image"), Incident_controller_1.updateIncident);
+router.get("/get-all", Incident_controller_1.getAllIncidents);
+router.get("/get-my-incidents", protectedRoute_1.verifyToken, Incident_controller_1.getMyIncidentReports);
+router.get("/get-assigned-incidents", protectedRoute_1.verifyToken, Incident_controller_1.getUserAssignedIncidents);
+router.put("/assign/:incident_id", protectedRoute_1.verifyToken, Incident_controller_1.assignIncident);
+router.put("/reassign/:incident_id", protectedRoute_1.verifyToken, Incident_controller_1.reAssignIncident);
+router.put("/close/:incident_id", protectedRoute_1.verifyToken, Incident_controller_1.closeIncident);
+router.put("/resolve/:incident_id", protectedRoute_1.verifyToken, Incident_controller_1.ResolveIncident);
+router.get("/statistics", protectedRoute_1.verifyToken, Incident_controller_1.getIncidentStatistics);
+router.get("/my-assigned-incidents", protectedRoute_1.verifyToken, Incident_controller_1.getMyAssignedIncidents);
+router.get("/personnel-dashboard-stats", protectedRoute_1.verifyToken, Incident_controller_1.getPersonnelDashboardStats);
+exports.default = router;
