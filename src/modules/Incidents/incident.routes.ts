@@ -3,6 +3,7 @@ import upload from "../../middleware/upload";
 import { createIncidentReport,
          getAllIncidents,
          getMyIncidentReports,
+         getMySubmittedIncidents,
          getUserAssignedIncidents,
          assignIncident,
          reAssignIncident,
@@ -24,6 +25,7 @@ router.post("/create-incident",verifyToken ,upload.single("incident_image"), cre
 router.put("/update/:incident_id", verifyToken,upload.single("incident_image"), updateIncident);
 router.get("/get-all", getAllIncidents);
 router.get("/get-my-incidents",verifyToken, getMyIncidentReports);
+router.get("/my-submitted-incidents", verifyToken, getMySubmittedIncidents);
 router.get("/get-assigned-incidents",verifyToken, getUserAssignedIncidents);
 router.put("/assign/:incident_id", verifyToken, assignIncident);
 router.put("/reassign/:incident_id", verifyToken, reAssignIncident);

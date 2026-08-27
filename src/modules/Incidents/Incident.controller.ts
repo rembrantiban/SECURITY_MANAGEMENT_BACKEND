@@ -462,6 +462,90 @@
         }
     };
 
+    /**
+     * GET ALL INCIDENTS SUBMITTED BY THE CURRENT USER (Authorized Staff)
+     * Unlike getMyIncidentReports, this includes Resolved/Closed incidents
+     * so the reporter can track the full status history of what they submitted.
+     */
+    export const getMySubmittedIncidents = async (
+        req: Request,
+        res: Response
+    ): Promise<void> => {
+        try {
+            const user = req.user;
+
+            if (!user) {
+                res.status(401).json({
+                    success: false,
+                    message: "Unauthorized",
+                });
+                return;
+            }
+
+            const result = await pool.query(
+                `
+                SELECT
+                    ir.incident_id,
+                    ir.incident_number,
+                    ir.title,
+                    ir.category,
+                    ir.severity,
+                    ir.location,
+                    ir.description,
+                    ir.incident_image,
+                    ir.status,
+                    ir.created_at,
+                    ir.updated_at,
+
+                    ir.reported_by,
+                    CONCAT(
+                        reporter.first_name,
+                        ' ',
+                        reporter.last_name
+                    ) AS reported_by_name,
+
+                    ir.assigned_to,
+                    CASE
+                        WHEN assignee.user_id IS NULL THEN NULL
+                        ELSE CONCAT(
+                            assignee.first_name,
+                            ' ',
+                            assignee.last_name
+                        )
+                    END AS assigned_to_name
+
+                FROM incident_reports ir
+
+                INNER JOIN users reporter
+                    ON reporter.user_id = ir.reported_by
+
+                LEFT JOIN users assignee
+                    ON assignee.user_id = ir.assigned_to
+
+                WHERE
+                    ir.reported_by = $1
+                    AND ir.status != 'Archived'
+
+                ORDER BY ir.created_at DESC
+                `,
+                [user.user_id]
+            );
+
+            res.status(200).json({
+                success: true,
+                total: result.rowCount,
+                incidents: result.rows,
+            });
+        } catch (error) {
+            console.error(error);
+
+            res.status(500).json({
+                success: false,
+                message: "Failed to fetch your submitted incident reports.",
+            });
+        }
+    };
+
     export const getUserAssignedIncidents = async (
         req: Request,
         res: Response
