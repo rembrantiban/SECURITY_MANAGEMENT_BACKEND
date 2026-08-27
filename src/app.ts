@@ -1,9 +1,9 @@
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
-import userRouter  from "./modules/User/User.routes"
+import userRouter from "./modules/User/User.routes"
 import incidentRouter from "./modules/Incidents/incident.routes"
-import motoringRoutes  from "./modules/Monitoring/Monitoring.routes"
+import motoringRoutes from "./modules/Monitoring/Monitoring.routes"
 import PatrolRoutes from "./modules/Patrol/Patrol.routes"
 import RequestRoutes from "./modules/Request/Request.routes"
 import PermissionsRoutes from "./modules/Permissions/Permissions.routes"
@@ -21,6 +21,8 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: (origin, callback) => {
+      console.log("ORIGIN:", origin);
+      console.log("ALLOWED:", allowedOrigins);
       if (!origin) return callback(null, true);
 
       if (allowedOrigins.includes(origin)) {
@@ -29,6 +31,8 @@ app.use(
 
       callback(new Error("Not allowed by CORS"));
     },
+
+
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
     allowedHeaders: ["Content-Type", "Authorization"],
