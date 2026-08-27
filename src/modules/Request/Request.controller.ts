@@ -27,9 +27,35 @@ export const createAccessRequest = async (
             !last_name ||
             !purpose
         ) {
+            await client.query("ROLLBACK");
+
             res.status(400).json({
                 success: false,
                 message: "Please fill in all required fields.",
+            });
+            return;
+        }
+
+        const blacklistMatch = await client.query(
+            `
+            SELECT blacklist_id, reason
+            FROM visitor_blacklist
+            WHERE
+                is_active = true
+                AND LOWER(first_name) = LOWER($1)
+                AND LOWER(last_name) = LOWER($2)
+            LIMIT 1
+            `,
+            [first_name, last_name]
+        );
+
+        if (blacklistMatch.rows.length > 0) {
+            await client.query("ROLLBACK");
+
+            res.status(403).json({
+                success: false,
+                message:
+                    "This visitor is blacklisted and cannot be registered for campus access.",
             });
             return;
         }
@@ -208,6 +234,18 @@ export const approveAccessRequest = async (
             return;
         }
 
+        if (
+            req.user?.role !== "Administrator" &&
+            req.user?.role !== "Security Personnel"
+        ) {
+            res.status(403).json({
+                success: false,
+                message:
+                    "Only Administrators and Security Personnel can approve visitor requests.",
+            });
+            return;
+        }
+
         const request = await pool.query(
             `
             SELECT *
@@ -276,6 +314,18 @@ export const rejectAccessRequest = async (
             res.status(401).json({
                 success: false,
                 message: "Unauthorized.",
+            });
+            return;
+        }
+
+        if (
+            req.user?.role !== "Administrator" &&
+            req.user?.role !== "Security Personnel"
+        ) {
+            res.status(403).json({
+                success: false,
+                message:
+                    "Only Administrators and Security Personnel can reject visitor requests.",
             });
             return;
         }

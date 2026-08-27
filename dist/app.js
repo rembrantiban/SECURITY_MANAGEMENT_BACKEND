@@ -13,6 +13,7 @@ const Patrol_routes_1 = __importDefault(require("./modules/Patrol/Patrol.routes"
 const Request_routes_1 = __importDefault(require("./modules/Request/Request.routes"));
 const Permissions_routes_1 = __importDefault(require("./modules/Permissions/Permissions.routes"));
 const Role_Permissions_routes_1 = __importDefault(require("./modules/Role_Permissions/Role_Permissions.routes"));
+const Blacklist_routes_1 = __importDefault(require("./modules/Blacklist/Blacklist.routes"));
 const app = (0, express_1.default)();
 app.use((0, cookie_parser_1.default)());
 const allowedOrigins = [
@@ -47,6 +48,7 @@ app.use("/api/patrol", Patrol_routes_1.default);
 app.use("/api/access-request", Request_routes_1.default);
 app.use("/api/permissions", Permissions_routes_1.default);
 app.use("/api/role-permissions", Role_Permissions_routes_1.default);
+app.use("/api/blacklist", Blacklist_routes_1.default);
 app.get("/api", (req, res) => {
     res.json({ message: "API is working!" });
 });

@@ -8,6 +8,7 @@ import PatrolRoutes from "./modules/Patrol/Patrol.routes"
 import RequestRoutes from "./modules/Request/Request.routes"
 import PermissionsRoutes from "./modules/Permissions/Permissions.routes"
 import RolePermissionRoutes from "./modules/Role_Permissions/Role_Permissions.routes"
+import BlacklistRoutes from "./modules/Blacklist/Blacklist.routes"
 
 const app = express();
 
@@ -53,6 +54,7 @@ app.use("/api/patrol", PatrolRoutes);
 app.use("/api/access-request", RequestRoutes);
 app.use("/api/permissions", PermissionsRoutes);
 app.use("/api/role-permissions", RolePermissionRoutes);
+app.use("/api/blacklist", BlacklistRoutes);
 app.get("/api", (req, res) => {
   res.json({ message: "API is working!" });
 });
