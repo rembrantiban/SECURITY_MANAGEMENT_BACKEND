@@ -11,6 +11,7 @@ import {
   logout,
   getCurrentUser,
   getUserStatistics,
+  resetUserPassword,
   getSecurityPersonnel,
   getUserById,
   changePassword,
@@ -36,6 +37,7 @@ router.put("/update-user-status/:user_id", verifyToken, updateUserStatus);
 router.get("/user/:user_id", verifyToken, getUserById);
 router.get("/get-all-users", verifyToken, getAllUsers);
 router.put("/update-user/:user_id", verifyToken, updateUser);
+router.put("/reset-user-password/:user_id", verifyToken, resetUserPassword);
 router.delete("/delete-user/:user_id", verifyToken, deleteUser);
 router.put("/change-account-details", verifyToken, changeAccountDetails);
 router.post("/logout", logout);

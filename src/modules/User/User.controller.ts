@@ -685,6 +685,76 @@ export const changeAccountDetails = async (
   }
 };
 
+export const resetUserPassword = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { user_id } = req.params;
+    const { new_password, confirm_password } = req.body;
+
+    if (!new_password || !confirm_password) {
+      res.status(400).json({
+        success: false,
+        message: "New password and confirm password are required.",
+      });
+      return;
+    }
+
+    if (new_password !== confirm_password) {
+      res.status(400).json({
+        success: false,
+        message: "New password and confirm password do not match.",
+      });
+      return;
+    }
+
+    if (new_password.length < 8) {
+      res.status(400).json({
+        success: false,
+        message: "Password must be at least 8 characters long.",
+      });
+      return;
+    }
+
+    const existingUser = await pool.query(
+      "SELECT user_id FROM users WHERE user_id = $1",
+      [user_id]
+    );
+
+    if (existingUser.rows.length === 0) {
+      res.status(404).json({
+        success: false,
+        message: "User not found.",
+      });
+      return;
+    }
+
+    const hashedPassword = await bcrypt.hash(new_password, 10);
+
+    await pool.query(
+      `
+      UPDATE users
+      SET password = $1
+      WHERE user_id = $2
+      `,
+      [hashedPassword, user_id]
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Password reset successfully.",
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to reset password.",
+    });
+  }
+};
+
 export const changePassword = async (
   req: Request,
   res: Response
