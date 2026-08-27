@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getMyRequestAccess = exports.rejectAccessRequest = exports.approveAccessRequest = exports.getAllRequestedAccess = exports.createAccessRequest = void 0;
+exports.getMyRequestAccess = exports.recordVisitorExit = exports.rejectAccessRequest = exports.approveAccessRequest = exports.getAllRequestedAccess = exports.createAccessRequest = void 0;
 const db_1 = require("../../config/db");
 const UploadToCloudinary_1 = require("../../utils/UploadToCloudinary");
 const createAccessRequest = async (req, res) => {
@@ -99,6 +99,7 @@ const getAllRequestedAccess = async (req, res) => {
                 ar.created_at,
                 ar.updated_at,
                 ar.approved_at,
+                ar.checked_out_at,
 
                 ar.requested_by,
 
@@ -255,6 +256,59 @@ const rejectAccessRequest = async (req, res) => {
     }
 };
 exports.rejectAccessRequest = rejectAccessRequest;
+const recordVisitorExit = async (req, res) => {
+    try {
+        const { request_id } = req.params;
+        const request = await db_1.pool.query(`
+            SELECT *
+            FROM access_requests
+            WHERE request_id = $1
+            `, [request_id]);
+        if (request.rows.length === 0) {
+            res.status(404).json({
+                success: false,
+                message: "Access request not found.",
+            });
+            return;
+        }
+        const record = request.rows[0];
+        if (record.status !== "Approved") {
+            res.status(400).json({
+                success: false,
+                message: "Only approved visitors can be recorded as exited.",
+            });
+            return;
+        }
+        if (record.checked_out_at) {
+            res.status(400).json({
+                success: false,
+                message: "Visitor exit has already been recorded.",
+            });
+            return;
+        }
+        const result = await db_1.pool.query(`
+            UPDATE access_requests
+            SET
+                checked_out_at = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE request_id = $1
+            RETURNING *
+            `, [request_id]);
+        res.status(200).json({
+            success: true,
+            message: "Visitor exit recorded successfully.",
+            request: result.rows[0],
+        });
+    }
+    catch (error) {
+        console.error(error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to record visitor exit.",
+        });
+    }
+};
+exports.recordVisitorExit = recordVisitorExit;
 const getMyRequestAccess = async (req, res) => {
     try {
         const requested_by = req.user?.user_id;
@@ -283,6 +337,7 @@ const getMyRequestAccess = async (req, res) => {
                 ar.created_at,
                 ar.updated_at,
                 ar.approved_at,
+                ar.checked_out_at,
 
                 ar.requested_by,
 

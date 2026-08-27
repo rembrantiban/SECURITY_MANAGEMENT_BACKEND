@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getPersonnelDashboardStats = exports.getMyAssignedIncidents = exports.getIncidentStatistics = exports.ResolveIncident = exports.closeIncident = exports.reAssignIncident = exports.assignIncident = exports.getUserAssignedIncidents = exports.getMyIncidentReports = exports.deleteIncident = exports.getAllIncidents = exports.updateIncident = exports.createIncidentReport = void 0;
+exports.getPersonnelDashboardStats = exports.getMyAssignedIncidents = exports.getIncidentStatistics = exports.getArchivedIncidents = exports.restoreIncident = exports.archiveIncident = exports.ResolveIncident = exports.closeIncident = exports.reAssignIncident = exports.assignIncident = exports.getUserAssignedIncidents = exports.getMySubmittedIncidents = exports.getMyIncidentReports = exports.deleteIncident = exports.getAllIncidents = exports.updateIncident = exports.createIncidentReport = void 0;
 const db_1 = require("../../config/db");
 const UploadToCloudinary_1 = require("../../utils/UploadToCloudinary");
 const cloudinary_1 = __importDefault(require("../../config/cloudinary"));
@@ -209,7 +209,7 @@ const getAllIncidents = async (req, res) => {
                 LEFT JOIN users assignee
                     ON assignee.user_id = ir.assigned_to
                 
-                WHERE ir.status NOT IN ('Closed')
+                WHERE ir.status != 'Archived'
 
                 ORDER BY ir.created_at DESC
                 `);
@@ -359,6 +359,81 @@ const getMyIncidentReports = async (req, res) => {
     }
 };
 exports.getMyIncidentReports = getMyIncidentReports;
+/**
+ * GET ALL INCIDENTS SUBMITTED BY THE CURRENT USER (Authorized Staff)
+ * Unlike getMyIncidentReports, this includes Resolved/Closed incidents
+ * so the reporter can track the full status history of what they submitted.
+ */
+const getMySubmittedIncidents = async (req, res) => {
+    try {
+        const user = req.user;
+        if (!user) {
+            res.status(401).json({
+                success: false,
+                message: "Unauthorized",
+            });
+            return;
+        }
+        const result = await db_1.pool.query(`
+                SELECT
+                    ir.incident_id,
+                    ir.incident_number,
+                    ir.title,
+                    ir.category,
+                    ir.severity,
+                    ir.location,
+                    ir.description,
+                    ir.incident_image,
+                    ir.status,
+                    ir.created_at,
+                    ir.updated_at,
+
+                    ir.reported_by,
+                    CONCAT(
+                        reporter.first_name,
+                        ' ',
+                        reporter.last_name
+                    ) AS reported_by_name,
+
+                    ir.assigned_to,
+                    CASE
+                        WHEN assignee.user_id IS NULL THEN NULL
+                        ELSE CONCAT(
+                            assignee.first_name,
+                            ' ',
+                            assignee.last_name
+                        )
+                    END AS assigned_to_name
+
+                FROM incident_reports ir
+
+                INNER JOIN users reporter
+                    ON reporter.user_id = ir.reported_by
+
+                LEFT JOIN users assignee
+                    ON assignee.user_id = ir.assigned_to
+
+                WHERE
+                    ir.reported_by = $1
+                    AND ir.status != 'Archived'
+
+                ORDER BY ir.created_at DESC
+                `, [user.user_id]);
+        res.status(200).json({
+            success: true,
+            total: result.rowCount,
+            incidents: result.rows,
+        });
+    }
+    catch (error) {
+        console.error(error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to fetch your submitted incident reports.",
+        });
+    }
+};
+exports.getMySubmittedIncidents = getMySubmittedIncidents;
 const getUserAssignedIncidents = async (req, res) => {
     try {
         const userId = req.user?.user_id;
@@ -651,6 +726,154 @@ const ResolveIncident = async (req, res) => {
     }
 };
 exports.ResolveIncident = ResolveIncident;
+const archiveIncident = async (req, res) => {
+    try {
+        const { incident_id } = req.params;
+        const incidentResult = await db_1.pool.query(`
+                SELECT *
+                FROM incident_reports
+                WHERE incident_id = $1
+                `, [incident_id]);
+        if (incidentResult.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "Incident not found.",
+            });
+        }
+        const incident = incidentResult.rows[0];
+        if (!["Resolved", "Closed"].includes(incident.status)) {
+            return res.status(400).json({
+                success: false,
+                message: "Only resolved or closed incidents can be archived.",
+            });
+        }
+        const { rows } = await db_1.pool.query(`
+                UPDATE incident_reports
+                SET
+                    status = 'Archived',
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE incident_id = $1
+                RETURNING *;
+                `, [incident_id]);
+        return res.status(200).json({
+            success: true,
+            message: "Incident archived successfully.",
+            incident: rows[0],
+        });
+    }
+    catch (error) {
+        console.error(error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to archive incident.",
+        });
+    }
+};
+exports.archiveIncident = archiveIncident;
+const restoreIncident = async (req, res) => {
+    try {
+        const { incident_id } = req.params;
+        const incidentResult = await db_1.pool.query(`
+                SELECT *
+                FROM incident_reports
+                WHERE incident_id = $1
+                `, [incident_id]);
+        if (incidentResult.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "Incident not found.",
+            });
+        }
+        const incident = incidentResult.rows[0];
+        if (incident.status !== "Archived") {
+            return res.status(400).json({
+                success: false,
+                message: "Incident is not archived.",
+            });
+        }
+        const { rows } = await db_1.pool.query(`
+                UPDATE incident_reports
+                SET
+                    status = 'Resolved',
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE incident_id = $1
+                RETURNING *;
+                `, [incident_id]);
+        return res.status(200).json({
+            success: true,
+            message: "Incident restored successfully.",
+            incident: rows[0],
+        });
+    }
+    catch (error) {
+        console.error(error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to restore incident.",
+        });
+    }
+};
+exports.restoreIncident = restoreIncident;
+const getArchivedIncidents = async (req, res) => {
+    try {
+        const result = await db_1.pool.query(`
+                SELECT
+                    ir.incident_id,
+                    ir.incident_number,
+                    ir.title,
+                    ir.category,
+                    ir.severity,
+                    ir.location,
+                    ir.description,
+                    ir.incident_image,
+                    ir.status,
+                    ir.created_at,
+                    ir.updated_at,
+
+                    ir.reported_by,
+                    CONCAT(
+                        reporter.first_name,
+                        ' ',
+                        reporter.last_name
+                    ) AS reported_by_name,
+
+                    ir.assigned_to,
+                    CASE
+                        WHEN assignee.user_id IS NULL THEN NULL
+                        ELSE CONCAT(
+                            assignee.first_name,
+                            ' ',
+                            assignee.last_name
+                        )
+                    END AS assigned_to_name
+
+                FROM incident_reports ir
+
+                INNER JOIN users reporter
+                    ON reporter.user_id = ir.reported_by
+
+                LEFT JOIN users assignee
+                    ON assignee.user_id = ir.assigned_to
+
+                WHERE ir.status = 'Archived'
+
+                ORDER BY ir.updated_at DESC
+                `);
+        res.status(200).json({
+            success: true,
+            total: result.rowCount,
+            incidents: result.rows,
+        });
+    }
+    catch (error) {
+        console.error(error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to fetch archived incidents.",
+        });
+    }
+};
+exports.getArchivedIncidents = getArchivedIncidents;
 const getIncidentStatistics = async (req, res) => {
     try {
         const { rows } = await db_1.pool.query(`

@@ -10,4 +10,5 @@ router.put("/update/:schedule_id", protectedRoute_1.verifyToken, Monitoring_cont
 router.delete("/delete/:schedule_id", protectedRoute_1.verifyToken, Monitoring_controller_1.deleteMonitoringSchedule);
 router.patch("/update-status/:schedule_id/status", protectedRoute_1.verifyToken, Monitoring_controller_1.updateMonitoringScheduleStatus);
 router.get("/getMySchedules", protectedRoute_1.verifyToken, Monitoring_controller_1.getMyMonitoringSchedules);
+router.get("/statistics", protectedRoute_1.verifyToken, Monitoring_controller_1.getMonitoringStatistics);
 exports.default = router;

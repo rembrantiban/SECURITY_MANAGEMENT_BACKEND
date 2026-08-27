@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.updateApprovalStatus = exports.getSecurityPersonnel = exports.getUserStatistics = exports.getUserById = exports.getCurrentUser = exports.logout = exports.changePassword = exports.changeAccountDetails = exports.updateUser = exports.deleteUser = exports.getAllUsers = exports.updateUserStatus = exports.createUserByAdmin = exports.login = exports.register = exports.resetAdminPassword = void 0;
+exports.updateApprovalStatus = exports.getSecurityPersonnel = exports.getUserStatistics = exports.getUserById = exports.getCurrentUser = exports.logout = exports.changePassword = exports.resetUserPassword = exports.changeAccountDetails = exports.updateUser = exports.deleteUser = exports.getAllUsers = exports.updateUserStatus = exports.createUserByAdmin = exports.login = exports.register = exports.resetAdminPassword = void 0;
 const db_1 = require("../../config/db");
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const bcrypt_1 = __importDefault(require("bcrypt"));
@@ -503,6 +503,59 @@ const changeAccountDetails = async (req, res) => {
     }
 };
 exports.changeAccountDetails = changeAccountDetails;
+const resetUserPassword = async (req, res) => {
+    try {
+        const { user_id } = req.params;
+        const { new_password, confirm_password } = req.body;
+        if (!new_password || !confirm_password) {
+            res.status(400).json({
+                success: false,
+                message: "New password and confirm password are required.",
+            });
+            return;
+        }
+        if (new_password !== confirm_password) {
+            res.status(400).json({
+                success: false,
+                message: "New password and confirm password do not match.",
+            });
+            return;
+        }
+        if (new_password.length < 8) {
+            res.status(400).json({
+                success: false,
+                message: "Password must be at least 8 characters long.",
+            });
+            return;
+        }
+        const existingUser = await db_1.pool.query("SELECT user_id FROM users WHERE user_id = $1", [user_id]);
+        if (existingUser.rows.length === 0) {
+            res.status(404).json({
+                success: false,
+                message: "User not found.",
+            });
+            return;
+        }
+        const hashedPassword = await bcrypt_1.default.hash(new_password, 10);
+        await db_1.pool.query(`
+      UPDATE users
+      SET password = $1
+      WHERE user_id = $2
+      `, [hashedPassword, user_id]);
+        res.status(200).json({
+            success: true,
+            message: "Password reset successfully.",
+        });
+    }
+    catch (error) {
+        console.error(error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to reset password.",
+        });
+    }
+};
+exports.resetUserPassword = resetUserPassword;
 const changePassword = async (req, res) => {
     try {
         const user_id = req.user?.user_id;

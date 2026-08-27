@@ -19,6 +19,7 @@ router.put("/update-user-status/:user_id", protectedRoute_1.verifyToken, User_co
 router.get("/user/:user_id", protectedRoute_1.verifyToken, User_controller_1.getUserById);
 router.get("/get-all-users", protectedRoute_1.verifyToken, User_controller_1.getAllUsers);
 router.put("/update-user/:user_id", protectedRoute_1.verifyToken, User_controller_1.updateUser);
+router.put("/reset-user-password/:user_id", protectedRoute_1.verifyToken, User_controller_1.resetUserPassword);
 router.delete("/delete-user/:user_id", protectedRoute_1.verifyToken, User_controller_1.deleteUser);
 router.put("/change-account-details", protectedRoute_1.verifyToken, User_controller_1.changeAccountDetails);
 router.post("/logout", User_controller_1.logout);

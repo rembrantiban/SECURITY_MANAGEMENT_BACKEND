@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getMyMonitoringSchedules = exports.updateMonitoringScheduleStatus = exports.deleteMonitoringSchedule = exports.updateMonitoringSchedule = exports.getMonitoringSchedules = exports.createMonitoringSchedule = void 0;
+exports.getMyMonitoringSchedules = exports.getMonitoringStatistics = exports.updateMonitoringScheduleStatus = exports.deleteMonitoringSchedule = exports.updateMonitoringSchedule = exports.getMonitoringSchedules = exports.createMonitoringSchedule = void 0;
 const db_1 = require("../../config/db");
 const createMonitoringSchedule = async (req, res) => {
     const assigned_by = req.user?.user_id;
@@ -337,6 +337,40 @@ const updateMonitoringScheduleStatus = async (req, res) => {
     }
 };
 exports.updateMonitoringScheduleStatus = updateMonitoringScheduleStatus;
+const getMonitoringStatistics = async (req, res) => {
+    try {
+        const { rows } = await db_1.pool.query(`
+            SELECT
+                COUNT(*)::INT AS total_schedules,
+
+                COUNT(*) FILTER (
+                    WHERE status = 'Pending'
+                )::INT AS pending_schedules,
+
+                COUNT(*) FILTER (
+                    WHERE status = 'Ongoing'
+                )::INT AS ongoing_schedules,
+
+                COUNT(*) FILTER (
+                    WHERE status = 'Completed'
+                )::INT AS completed_schedules
+
+            FROM monitoring_schedules;
+        `);
+        res.status(200).json({
+            success: true,
+            stats: rows[0],
+        });
+    }
+    catch (error) {
+        console.error(error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to fetch monitoring statistics.",
+        });
+    }
+};
+exports.getMonitoringStatistics = getMonitoringStatistics;
 const getMyMonitoringSchedules = async (req, res) => {
     try {
         const user_id = req.user?.user_id;

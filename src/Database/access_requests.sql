@@ -35,6 +35,9 @@ CREATE TABLE access_requests (
 
     approved_at TIMESTAMP,
 
+    -- When the visitor was recorded as having left the premises
+    checked_out_at TIMESTAMP,
+
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

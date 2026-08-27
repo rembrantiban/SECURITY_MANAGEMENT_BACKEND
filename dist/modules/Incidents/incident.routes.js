@@ -12,6 +12,7 @@ router.post("/create-incident", protectedRoute_1.verifyToken, upload_1.default.s
 router.put("/update/:incident_id", protectedRoute_1.verifyToken, upload_1.default.single("incident_image"), Incident_controller_1.updateIncident);
 router.get("/get-all", Incident_controller_1.getAllIncidents);
 router.get("/get-my-incidents", protectedRoute_1.verifyToken, Incident_controller_1.getMyIncidentReports);
+router.get("/my-submitted-incidents", protectedRoute_1.verifyToken, Incident_controller_1.getMySubmittedIncidents);
 router.get("/get-assigned-incidents", protectedRoute_1.verifyToken, Incident_controller_1.getUserAssignedIncidents);
 router.put("/assign/:incident_id", protectedRoute_1.verifyToken, Incident_controller_1.assignIncident);
 router.put("/reassign/:incident_id", protectedRoute_1.verifyToken, Incident_controller_1.reAssignIncident);
@@ -20,4 +21,7 @@ router.put("/resolve/:incident_id", protectedRoute_1.verifyToken, Incident_contr
 router.get("/statistics", protectedRoute_1.verifyToken, Incident_controller_1.getIncidentStatistics);
 router.get("/my-assigned-incidents", protectedRoute_1.verifyToken, Incident_controller_1.getMyAssignedIncidents);
 router.get("/personnel-dashboard-stats", protectedRoute_1.verifyToken, Incident_controller_1.getPersonnelDashboardStats);
+router.get("/archived", protectedRoute_1.verifyToken, Incident_controller_1.getArchivedIncidents);
+router.put("/archive/:incident_id", protectedRoute_1.verifyToken, Incident_controller_1.archiveIncident);
+router.put("/restore/:incident_id", protectedRoute_1.verifyToken, Incident_controller_1.restoreIncident);
 exports.default = router;

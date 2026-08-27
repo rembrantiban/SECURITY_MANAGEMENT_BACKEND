@@ -8,5 +8,8 @@ const express_1 = __importDefault(require("express"));
 const Patrol_controller_1 = require("./Patrol.controller");
 const router = express_1.default.Router();
 router.patch("/start/:schedule_id", protectedRoute_1.verifyToken, Patrol_controller_1.startPatrol);
+router.patch("/complete/:schedule_id", protectedRoute_1.verifyToken, Patrol_controller_1.completePatrol);
+router.get("/my-patrols", protectedRoute_1.verifyToken, Patrol_controller_1.getMyPatrols);
 router.get("/my-completed", protectedRoute_1.verifyToken, Patrol_controller_1.getMyCompletedPatrols);
+router.get("/logs", protectedRoute_1.verifyToken, Patrol_controller_1.getAllPatrolLogs);
 exports.default = router;

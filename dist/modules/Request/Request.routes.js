@@ -13,4 +13,5 @@ router.get("/get-my-requests", protectedRoute_1.verifyToken, Request_controller_
 router.get("/get-all", protectedRoute_1.verifyToken, Request_controller_1.getAllRequestedAccess);
 router.put("/approve/:request_id", protectedRoute_1.verifyToken, Request_controller_1.approveAccessRequest);
 router.put("/reject/:request_id", protectedRoute_1.verifyToken, Request_controller_1.rejectAccessRequest);
+router.put("/checkout/:request_id", protectedRoute_1.verifyToken, Request_controller_1.recordVisitorExit);
 exports.default = router;
