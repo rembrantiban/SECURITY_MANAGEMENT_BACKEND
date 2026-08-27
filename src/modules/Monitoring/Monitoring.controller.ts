@@ -474,6 +474,44 @@ export const updateMonitoringScheduleStatus = async (
 };
 
 
+export const getMonitoringStatistics = async (
+    req: Request,
+    res: Response
+): Promise<void> => {
+    try {
+        const { rows } = await pool.query(`
+            SELECT
+                COUNT(*)::INT AS total_schedules,
+
+                COUNT(*) FILTER (
+                    WHERE status = 'Pending'
+                )::INT AS pending_schedules,
+
+                COUNT(*) FILTER (
+                    WHERE status = 'Ongoing'
+                )::INT AS ongoing_schedules,
+
+                COUNT(*) FILTER (
+                    WHERE status = 'Completed'
+                )::INT AS completed_schedules
+
+            FROM monitoring_schedules;
+        `);
+
+        res.status(200).json({
+            success: true,
+            stats: rows[0],
+        });
+    } catch (error) {
+        console.error(error);
+
+        res.status(500).json({
+            success: false,
+            message: "Failed to fetch monitoring statistics.",
+        });
+    }
+};
+
 export const getMyMonitoringSchedules = async (
     req: Request,
     res: Response

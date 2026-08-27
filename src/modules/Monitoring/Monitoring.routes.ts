@@ -6,7 +6,8 @@ import {
     updateMonitoringSchedule,
     deleteMonitoringSchedule,
     updateMonitoringScheduleStatus,
-    getMyMonitoringSchedules
+    getMyMonitoringSchedules,
+    getMonitoringStatistics
 } from "./Monitoring.controller";
 
 const router = Router();
@@ -23,5 +24,7 @@ router.delete( "/delete/:schedule_id", verifyToken, deleteMonitoringSchedule);
 router.patch("/update-status/:schedule_id/status", verifyToken,updateMonitoringScheduleStatus);
 
 router.get("/getMySchedules", verifyToken, getMyMonitoringSchedules);
+
+router.get("/statistics", verifyToken, getMonitoringStatistics);
 
 export default router;

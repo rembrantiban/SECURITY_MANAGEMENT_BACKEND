@@ -276,7 +276,7 @@
                 LEFT JOIN users assignee
                     ON assignee.user_id = ir.assigned_to
                 
-                WHERE ir.status NOT IN ('Closed', 'Archived')
+                WHERE ir.status != 'Archived'
 
                 ORDER BY ir.created_at DESC
                 `

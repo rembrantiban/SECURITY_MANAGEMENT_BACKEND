@@ -204,6 +204,57 @@ export const startPatrol = async (
     }
 };
 
+export const getAllPatrolLogs = async (
+    req: Request,
+    res: Response
+): Promise<void> => {
+    try {
+        const result = await pool.query(
+            `
+            SELECT
+                pl.patrol_log_id,
+                pl.schedule_id,
+                pl.area_patrolled,
+                pl.patrol_start,
+                pl.patrol_end,
+                pl.observations,
+                pl.status,
+                pl.created_at,
+
+                ms.schedule_date,
+                ms.start_time,
+                ms.end_time,
+
+                u.user_id,
+                CONCAT(u.first_name, ' ', u.last_name) AS personnel_name
+
+            FROM patrol_logs pl
+            INNER JOIN monitoring_schedules ms
+                ON pl.schedule_id = ms.schedule_id
+            INNER JOIN users u
+                ON pl.user_id = u.user_id
+
+            ORDER BY
+                pl.patrol_start DESC;
+            `
+        );
+
+        res.status(200).json({
+            success: true,
+            total: result.rows.length,
+            patrols: result.rows,
+        });
+
+    } catch (error) {
+        console.error("Get All Patrol Logs Error:", error);
+
+        res.status(500).json({
+            success: false,
+            message: "Failed to retrieve patrol logs.",
+        });
+    }
+};
+
 export const getMyCompletedPatrols = async (
     req: Request,
     res: Response
