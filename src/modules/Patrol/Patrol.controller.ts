@@ -66,23 +66,24 @@ export const startPatrol = async (
         }
 
         // Already completed?
-        if (schedule.status === "Pending") {
-            await client.query("ROLLBACK");
-
-            res.status(400).json({
-                success: false,
-                message: "Patrol cannot be started yet.",
-            });
-            return
-        }
-
-
         if (schedule.status === "Completed") {
             await client.query("ROLLBACK");
 
             res.status(400).json({
                 success: false,
                 message: "This patrol schedule has already ended.",
+            });
+
+            return
+        }
+
+        // Cancelled?
+        if (schedule.status === "Cancelled") {
+            await client.query("ROLLBACK");
+
+            res.status(400).json({
+                success: false,
+                message: "This patrol schedule has been cancelled.",
             });
 
             return
@@ -204,6 +205,134 @@ export const startPatrol = async (
     }
 };
 
+export const completePatrol = async (
+    req: Request,
+    res: Response
+): Promise<void> => {
+    const client = await pool.connect();
+
+    try {
+        await client.query("BEGIN");
+
+        const { schedule_id } = req.params;
+        const { observations } = req.body;
+        const userId = req.user?.user_id;
+
+        if (!userId) {
+            await client.query("ROLLBACK");
+
+            res.status(401).json({
+                success: false,
+                message: "Unauthorized.",
+            });
+
+            return;
+        }
+
+        const patrolResult = await client.query(
+            `
+            SELECT patrol_log_id, status, user_id
+            FROM patrol_logs
+            WHERE schedule_id = $1
+            `,
+            [schedule_id]
+        );
+
+        if (patrolResult.rows.length === 0) {
+            await client.query("ROLLBACK");
+
+            res.status(404).json({
+                success: false,
+                message: "Patrol log not found. Start the patrol first.",
+            });
+
+            return;
+        }
+
+        const patrol = patrolResult.rows[0];
+
+        if (patrol.user_id !== userId) {
+            await client.query("ROLLBACK");
+
+            res.status(403).json({
+                success: false,
+                message: "You are not authorized to complete this patrol.",
+            });
+
+            return;
+        }
+
+        if (patrol.status !== "Ongoing") {
+            await client.query("ROLLBACK");
+
+            res.status(400).json({
+                success: false,
+                message: "This patrol is not currently ongoing.",
+            });
+
+            return;
+        }
+
+        const result = await client.query(
+            `
+            UPDATE patrol_logs
+            SET
+                patrol_end = CURRENT_TIMESTAMP,
+                observations = $1,
+                status = 'Completed',
+                updated_at = CURRENT_TIMESTAMP
+            WHERE patrol_log_id = $2
+            RETURNING *;
+            `,
+            [observations || null, patrol.patrol_log_id]
+        );
+
+        await client.query(
+            `
+            UPDATE monitoring_schedules
+            SET
+                status = 'Completed',
+                updated_at = CURRENT_TIMESTAMP
+            WHERE schedule_id = $1
+            `,
+            [schedule_id]
+        );
+
+        await client.query(
+            `
+            UPDATE users
+            SET on_duty = FALSE
+            WHERE user_id = $1
+            `,
+            [userId]
+        );
+
+        await client.query("COMMIT");
+
+        res.status(200).json({
+            success: true,
+            message: "Patrol completed and recorded successfully.",
+            patrol: result.rows[0],
+        });
+
+    } catch (error) {
+
+        await client.query("ROLLBACK");
+
+        console.error("Complete Patrol Error:", error);
+
+        res.status(500).json({
+            success: false,
+            message: "Failed to complete patrol.",
+        });
+
+    } finally {
+
+        client.release();
+
+    }
+};
+
 export const getAllPatrolLogs = async (
     req: Request,
     res: Response
@@ -251,6 +380,70 @@ export const getAllPatrolLogs = async (
         res.status(500).json({
             success: false,
             message: "Failed to retrieve patrol logs.",
+        });
+    }
+};
+
+export const getMyPatrols = async (
+    req: Request,
+    res: Response
+): Promise<void> => {
+    try {
+        const userId = req.user?.user_id;
+
+        if (!userId) {
+            res.status(401).json({
+                success: false,
+                message: "Unauthorized.",
+            });
+            return;
+        }
+
+        const result = await pool.query(
+            `
+            SELECT
+                pl.patrol_log_id,
+                pl.schedule_id,
+                pl.area_patrolled,
+                pl.patrol_start,
+                pl.patrol_end,
+                pl.observations,
+                pl.status,
+                pl.created_at,
+
+                ms.schedule_date,
+                ms.start_time,
+                ms.end_time,
+
+                u.user_id,
+                CONCAT(u.first_name, ' ', u.last_name) AS personnel_name
+
+            FROM patrol_logs pl
+            INNER JOIN monitoring_schedules ms
+                ON pl.schedule_id = ms.schedule_id
+            INNER JOIN users u
+                ON pl.user_id = u.user_id
+
+            WHERE pl.user_id = $1
+
+            ORDER BY
+                pl.patrol_start DESC;
+            `,
+            [userId]
+        );
+
+        res.status(200).json({
+            success: true,
+            total: result.rows.length,
+            patrols: result.rows,
+        });
+
+    } catch (error) {
+        console.error("Get My Patrols Error:", error);
+
+        res.status(500).json({
+            success: false,
+            message: "Failed to retrieve your patrols.",
         });
     }
 };
