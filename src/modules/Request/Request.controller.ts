@@ -21,10 +21,19 @@ export const createAccessRequest = async (
 
         const requested_by = req.user?.user_id;
 
+        const firstName =
+            typeof first_name === "string" ? first_name.trim() : "";
+        const middleName =
+            typeof middle_name === "string" && middle_name.trim() !== ""
+                ? middle_name.trim()
+                : null;
+        const lastName =
+            typeof last_name === "string" ? last_name.trim() : "";
+
         if (
             !requested_by ||
-            !first_name ||
-            !last_name ||
+            !firstName ||
+            !lastName ||
             !purpose
         ) {
             await client.query("ROLLBACK");
@@ -36,26 +45,72 @@ export const createAccessRequest = async (
             return;
         }
 
+        /**
+         * Blacklist screening.
+         *
+         * A request is blocked when an active blacklist entry matches on
+         * first name + last name (case-insensitive, whitespace-trimmed).
+         * When BOTH the request and the blacklist entry carry a middle name,
+         * that must match too — otherwise the first + last match still stands,
+         * so a middle name can't be added or dropped to slip past the list.
+         * The most specific match (middle name included) is preferred.
+         */
         const blacklistMatch = await client.query(
             `
-            SELECT blacklist_id, reason
+            SELECT
+                blacklist_id,
+                first_name,
+                middle_name,
+                last_name,
+                reason,
+                created_at
             FROM visitor_blacklist
             WHERE
                 is_active = true
-                AND LOWER(first_name) = LOWER($1)
-                AND LOWER(last_name) = LOWER($2)
+                AND LOWER(TRIM(first_name)) = LOWER($1)
+                AND LOWER(TRIM(last_name)) = LOWER($2)
+                AND (
+                    middle_name IS NULL
+                    OR TRIM(middle_name) = ''
+                    OR $3::text IS NULL
+                    OR LOWER(TRIM(middle_name)) = LOWER($3)
+                )
+            ORDER BY
+                CASE
+                    WHEN $3::text IS NOT NULL
+                        AND LOWER(TRIM(middle_name)) = LOWER($3)
+                    THEN 0
+                    ELSE 1
+                END,
+                created_at DESC
             LIMIT 1
             `,
-            [first_name, last_name]
+            [firstName, lastName, middleName]
         );
 
         if (blacklistMatch.rows.length > 0) {
             await client.query("ROLLBACK");
 
+            const match = blacklistMatch.rows[0];
+
+            const blacklistedName = [
+                match.first_name,
+                match.middle_name,
+                match.last_name,
+            ]
+                .filter(Boolean)
+                .join(" ");
+
             res.status(403).json({
                 success: false,
-                message:
-                    "This visitor is blacklisted and cannot be registered for campus access.",
+                blacklisted: true,
+                message: `${blacklistedName} is on the visitor blacklist and cannot be registered for campus access.`,
+                blacklist: {
+                    blacklist_id: match.blacklist_id,
+                    name: blacklistedName,
+                    reason: match.reason,
+                    since: match.created_at,
+                },
             });
             return;
         }
@@ -111,9 +166,9 @@ export const createAccessRequest = async (
             [
                 requestNumber,
                 requested_by,
-                first_name,
-                middle_name || null,
-                last_name,
+                firstName,
+                middleName,
+                lastName,
                 id_type || null,
                 idImage,
                 purpose,
