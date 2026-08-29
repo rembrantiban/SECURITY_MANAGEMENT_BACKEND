@@ -876,10 +876,11 @@
 
             const incident = incidentResult.rows[0];
 
-            // Only Administrator or assigned personnel can resolve
+            // Administrator, the assigned personnel, or the reporter can resolve
             if (
                 currentUser.role !== "Administrator" &&
-                incident.assigned_to !== currentUser.user_id
+                incident.assigned_to !== currentUser.user_id &&
+                incident.reported_by !== currentUser.user_id
             ) {
                 return res.status(403).json({
                     success: false,
