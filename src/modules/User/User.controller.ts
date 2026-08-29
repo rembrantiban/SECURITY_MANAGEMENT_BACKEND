@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { pool } from "../../config/db";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
+import { logActivity } from "../Activity/Activity.controller";
 
 
 export const resetAdminPassword = async (
@@ -202,6 +203,8 @@ export const login = async (
             `,
       [user.user_id]
     );
+
+    logActivity(user.user_id, "Login", null, null, req.ip ?? null);
 
     const permissionResult = await pool.query(
       `

@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { pool } from "../../config/db";
 import { uploadToCloudinary } from "../../utils/UploadToCloudinary";
+import { logActivity } from "../Activity/Activity.controller";
 
 export const createAccessRequest = async (
     req: Request,
@@ -176,6 +177,15 @@ export const createAccessRequest = async (
         );
 
         await client.query("COMMIT");
+
+        logActivity(
+            requested_by,
+            "Visitor Request",
+            result.rows[0].request_number,
+            `Visitor: ${[firstName, middleName, lastName]
+                .filter(Boolean)
+                .join(" ")}`
+        );
 
         res.status(201).json({
             success: true,

@@ -2,6 +2,7 @@
     import { pool } from "../../config/db";
     import { uploadToCloudinary } from "../../utils/UploadToCloudinary";
     import cloudinary from "../../config/cloudinary";
+    import { logActivity } from "../Activity/Activity.controller";
 
     export const createIncidentReport = async (
         req: Request,
@@ -90,6 +91,13 @@
             );
 
             await client.query("COMMIT");
+
+            logActivity(
+                reported_by,
+                "Incident Report",
+                result.rows[0].incident_number,
+                title
+            );
 
             res.status(201).json({
                 success: true,
