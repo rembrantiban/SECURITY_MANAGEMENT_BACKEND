@@ -217,6 +217,83 @@ export const getAllRequestedAccess = async (
 }; 
 
 
+export const getAllPendingRequestAccess = async (
+    req: Request,
+    res: Response
+): Promise<void> => {
+    try {
+        const result = await pool.query(
+            `
+            SELECT
+                ar.request_id,
+                ar.request_number,
+
+                ar.first_name,
+                ar.middle_name,
+                ar.last_name,
+
+                ar.id_type,
+                ar.id_image,
+                ar.purpose,
+
+                ar.status,
+
+                ar.created_at,
+                ar.updated_at,
+                ar.approved_at,
+                ar.checked_out_at,
+
+                ar.requested_by,
+
+                CONCAT(
+                    requester.first_name,
+                    ' ',
+                    requester.last_name
+                ) AS requested_by_name,
+
+                ar.approved_by,
+
+                CASE
+                    WHEN approver.user_id IS NULL THEN NULL
+                    ELSE CONCAT(
+                        approver.first_name,
+                        ' ',
+                        approver.last_name
+                    )
+                END AS approved_by_name
+
+            FROM access_requests ar
+
+            INNER JOIN users requester
+                ON requester.user_id = ar.requested_by
+
+            LEFT JOIN users approver
+                ON approver.user_id = ar.approved_by
+
+            WHERE ar.status = 'Pending'
+
+            ORDER BY
+                ar.created_at DESC
+            `
+        );
+
+        res.status(200).json({
+            success: true,
+            total: result.rowCount,
+            requests: result.rows,
+        });
+
+    } catch (error) {
+        console.error(error);
+
+        res.status(500).json({
+            success: false,
+            message: "Failed to fetch pending access requests.",
+        });
+    }
+};
+
+
 export const approveAccessRequest = async (
     req: Request,
     res: Response
