@@ -12,24 +12,23 @@ async function fanOut(
     notificationId: number,
     audience: string
 ): Promise<number> {
-    const roleFilter =
-        audience === "All" ? `role = ANY($2::text[])` : `role = $2`;
+    // "All" → every receiving role; otherwise the one requested role.
+    const roles: string[] =
+        audience === "All" ? [...RECEIVING_ROLES] : [audience];
 
-    const params: any[] =
-        audience === "All"
-            ? [notificationId, [...RECEIVING_ROLES]]
-            : [notificationId, audience];
-
+    // `role` is a `user_role` enum, so it must be cast to text before it can
+    // be compared against a text[] parameter — otherwise Postgres throws
+    // `operator does not exist: user_role = text` and the send fails.
     const result = await pool.query(
         `
         INSERT INTO notification_recipients (notification_id, user_id)
         SELECT $1, user_id
         FROM users
         WHERE status = true
-          AND ${roleFilter}
+          AND role::text = ANY($2::text[])
         ON CONFLICT (notification_id, user_id) DO NOTHING
         `,
-        params
+        [notificationId, roles]
     );
 
     return result.rowCount ?? 0;
