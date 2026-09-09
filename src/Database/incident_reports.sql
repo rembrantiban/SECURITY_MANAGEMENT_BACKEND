@@ -28,6 +28,15 @@ CREATE TABLE incident_reports (
             )
         ),
     note TEXT,
+
+    -- Remembers the status an incident held before it was archived, so a
+    -- restore returns it to that exact status instead of a fixed default.
+    pre_archive_status VARCHAR(30)
+        CHECK (
+            pre_archive_status IS NULL
+            OR pre_archive_status IN ('Resolved', 'Closed')
+        ),
+
     reported_by INTEGER NOT NULL,
     assigned_to INTEGER,
     assigned_by INTEGER,
@@ -66,3 +75,7 @@ ON incident_reports(status);
 
 CREATE INDEX idx_incident_created_at
 ON incident_reports(created_at DESC);
+
+-- Existing databases: add the archive-status memory column.
+ALTER TABLE incident_reports
+    ADD COLUMN IF NOT EXISTS pre_archive_status VARCHAR(30);

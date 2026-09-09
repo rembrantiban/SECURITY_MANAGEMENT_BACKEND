@@ -960,6 +960,7 @@
                 `
                 UPDATE incident_reports
                 SET
+                    pre_archive_status = status,
                     status = 'Archived',
                     updated_at = CURRENT_TIMESTAMP
                 WHERE incident_id = $1
@@ -1019,7 +1020,8 @@
                 `
                 UPDATE incident_reports
                 SET
-                    status = 'Resolved',
+                    status = COALESCE(pre_archive_status, 'Resolved'),
+                    pre_archive_status = NULL,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE incident_id = $1
                 RETURNING *;
