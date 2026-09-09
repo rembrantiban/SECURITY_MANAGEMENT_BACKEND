@@ -4,8 +4,12 @@ import { pool } from "../../config/db";
 export type ActivityAction =
     | "Login"
     | "Logout"
+    | "Register"
+    | "Incident Report"
     | "Visitor Request"
-    | "Incident Report";
+    | "Access Request"
+    | "Monitoring"
+    | "Patrol";
 
 /**
  * Fire-and-forget activity write. Never throws into the caller — a failed

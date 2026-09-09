@@ -121,10 +121,20 @@ export const register = async (
       ]
     );
 
+    const newUser = result.rows[0];
+
+    logActivity(
+      newUser.user_id,
+      "Register",
+      null,
+      `${newUser.role} account`,
+      req.ip ?? null
+    );
+
     res.status(201).json({
       success: true,
       message: "User registered successfully",
-      user: result.rows[0],
+      user: newUser,
     });
   } catch (error) {
     console.error(error);

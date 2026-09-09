@@ -1,5 +1,6 @@
 import { pool } from "../../config/db"
 import { Request, Response } from "express"
+import { logActivity } from "../Activity/Activity.controller"
 
 
 export const createMonitoringSchedule = async (
@@ -140,6 +141,14 @@ export const createMonitoringSchedule = async (
                 end_time,
                 remarks ?? null,
             ]
+        );
+
+        logActivity(
+            assigned_by,
+            "Monitoring",
+            null,
+            `created a monitoring schedule for ${assigned_area}`,
+            req.ip ?? null
         );
 
         res.status(201).json({
@@ -333,6 +342,14 @@ export const updateMonitoringSchedule = async (
 
             return;
         }
+
+        logActivity(
+            req.user?.user_id ?? null,
+            "Monitoring",
+            null,
+            `updated a monitoring schedule for ${result.rows[0].assigned_area}`,
+            req.ip ?? null
+        );
 
         res.status(200).json({
             success: true,

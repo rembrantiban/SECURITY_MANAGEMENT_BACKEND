@@ -3,9 +3,19 @@
 CREATE TYPE activity_action AS ENUM (
     'Login',
     'Logout',
+    'Register',
+    'Incident Report',
     'Visitor Request',
-    'Incident Report'
+    'Access Request',
+    'Monitoring',
+    'Patrol'
 );
+
+-- Migration for existing databases:
+-- ALTER TYPE activity_action ADD VALUE IF NOT EXISTS 'Register';
+-- ALTER TYPE activity_action ADD VALUE IF NOT EXISTS 'Access Request';
+-- ALTER TYPE activity_action ADD VALUE IF NOT EXISTS 'Monitoring';
+-- ALTER TYPE activity_action ADD VALUE IF NOT EXISTS 'Patrol';
 
 CREATE TABLE activity_logs (
     activity_id   SERIAL PRIMARY KEY,

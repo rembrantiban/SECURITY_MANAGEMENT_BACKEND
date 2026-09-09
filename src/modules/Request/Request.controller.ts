@@ -182,9 +182,7 @@ export const createAccessRequest = async (
             requested_by,
             "Visitor Request",
             result.rows[0].request_number,
-            `Visitor: ${[firstName, middleName, lastName]
-                .filter(Boolean)
-                .join(" ")}`
+            [firstName, middleName, lastName].filter(Boolean).join(" ")
         );
 
         res.status(201).json({
@@ -427,6 +425,14 @@ export const approveAccessRequest = async (
             [approved_by, request_id]
         );
 
+        logActivity(
+            approved_by,
+            "Access Request",
+            result.rows[0].request_number,
+            "approved",
+            req.ip ?? null
+        );
+
         res.status(200).json({
             success: true,
             message: "Access request approved successfully.",
@@ -509,6 +515,14 @@ export const rejectAccessRequest = async (
             RETURNING *
             `,
             [approved_by, request_id]
+        );
+
+        logActivity(
+            approved_by,
+            "Access Request",
+            result.rows[0].request_number,
+            "rejected",
+            req.ip ?? null
         );
 
         res.status(200).json({

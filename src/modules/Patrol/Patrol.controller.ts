@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { pool } from "../../config/db";
+import { logActivity } from "../Activity/Activity.controller";
 
 export const startPatrol = async (
     req: Request,
@@ -181,6 +182,14 @@ export const startPatrol = async (
 
         await client.query("COMMIT");
 
+        logActivity(
+            schedule.user_id,
+            "Patrol",
+            null,
+            `started a patrol of ${schedule.assigned_area}`,
+            req.ip ?? null
+        );
+
         res.status(200).json({
             success: true,
             message: "Patrol started successfully.",
@@ -308,6 +317,14 @@ export const completePatrol = async (
         );
 
         await client.query("COMMIT");
+
+        logActivity(
+            userId,
+            "Patrol",
+            null,
+            `completed a patrol of ${result.rows[0].area_patrolled}`,
+            req.ip ?? null
+        );
 
         res.status(200).json({
             success: true,
