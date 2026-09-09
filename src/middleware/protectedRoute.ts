@@ -50,3 +50,30 @@ export const verifyToken = (
     });
   }
 };
+
+/**
+ * Role guard — use after `verifyToken` to restrict a route to specific roles.
+ *
+ *   router.put("/", verifyToken, requireRole("IT System Administrator"), handler);
+ */
+export const requireRole =
+  (...roles: string[]) =>
+  (req: Request, res: Response, next: NextFunction): void => {
+    if (!req.user) {
+      res.status(401).json({
+        success: false,
+        message: "Unauthorized: No authenticated user",
+      });
+      return;
+    }
+
+    if (!roles.includes(req.user.role)) {
+      res.status(403).json({
+        success: false,
+        message: "Forbidden: insufficient role for this action",
+      });
+      return;
+    }
+
+    next();
+  };

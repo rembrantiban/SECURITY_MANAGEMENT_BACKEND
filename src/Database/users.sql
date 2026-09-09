@@ -31,9 +31,17 @@ CREATE TABLE users (
     status BOOLEAN NOT NULL DEFAULT TRUE,
     on_duty BOOLEAN NOT NULL DEFAULT FALSE,
 
+    -- Login lockout state, driven by security_settings (spec 2.30)
+    failed_login_attempts INTEGER NOT NULL DEFAULT 0,
+    lockout_until TIMESTAMP,
+
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_login TIMESTAMP
 );
+
+-- Migration for existing databases:
+-- ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER NOT NULL DEFAULT 0;
+-- ALTER TABLE users ADD COLUMN IF NOT EXISTS lockout_until TIMESTAMP;
 
 -- Set database timezone
 SET TIME ZONE 'Asia/Manila';

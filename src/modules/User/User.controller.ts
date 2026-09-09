@@ -3,6 +3,10 @@ import { pool } from "../../config/db";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import { logActivity } from "../Activity/Activity.controller";
+import {
+  getSecuritySettings,
+  validatePassword,
+} from "../../utils/securitySettings";
 
 
 export const resetAdminPassword = async (
@@ -17,6 +21,16 @@ export const resetAdminPassword = async (
         success: false,
         message: "Password is required.",
       });
+      return;
+    }
+
+    const policyError = validatePassword(
+      password,
+      await getSecuritySettings()
+    );
+
+    if (policyError) {
+      res.status(400).json({ success: false, message: policyError });
       return;
     }
 
@@ -89,6 +103,16 @@ export const register = async (
         success: false,
         message: "User already exists",
       });
+      return;
+    }
+
+    const policyError = validatePassword(
+      password,
+      await getSecuritySettings()
+    );
+
+    if (policyError) {
+      res.status(400).json({ success: false, message: policyError });
       return;
     }
 
@@ -191,24 +215,78 @@ export const login = async (
       return;
     }
 
+    // Authentication & Account Security Settings (spec 2.30)
+    const settings = await getSecuritySettings();
+
+    // Account lockout — reject while a lockout window is still active.
+    if (
+      user.lockout_until &&
+      new Date(user.lockout_until).getTime() > Date.now()
+    ) {
+      const minutesLeft = Math.max(
+        1,
+        Math.ceil(
+          (new Date(user.lockout_until).getTime() - Date.now()) / 60000
+        )
+      );
+
+      res.status(403).json({
+        success: false,
+        message: `Account locked due to repeated failed attempts. Try again in ${minutesLeft} minute(s).`,
+      });
+      return;
+    }
+
     const isMatch = await bcrypt.compare(
       password,
       user.password
     );
 
     if (!isMatch) {
+      const attempts = (user.failed_login_attempts ?? 0) + 1;
+
+      if (attempts >= settings.maximum_login_attempts) {
+        await pool.query(
+          `
+                UPDATE users
+                SET failed_login_attempts = 0,
+                    lockout_until = CURRENT_TIMESTAMP + ($1 * INTERVAL '1 minute')
+                WHERE user_id = $2
+                `,
+          [settings.lockout_minutes, user.user_id]
+        );
+
+        res.status(403).json({
+          success: false,
+          message: `Account locked due to ${settings.maximum_login_attempts} failed attempts. Try again in ${settings.lockout_minutes} minute(s).`,
+        });
+        return;
+      }
+
+      await pool.query(
+        `
+              UPDATE users
+              SET failed_login_attempts = $1
+              WHERE user_id = $2
+              `,
+        [attempts, user.user_id]
+      );
+
       res.status(401).json({
         success: false,
         message: "Invalid credentials",
+        attempts_remaining: settings.maximum_login_attempts - attempts,
       });
       return;
     }
 
-    // Update last login
+    // Successful login — clear lockout state and stamp last login.
     await pool.query(
       `
             UPDATE users
-            SET last_login = CURRENT_TIMESTAMP
+            SET last_login = CURRENT_TIMESTAMP,
+                failed_login_attempts = 0,
+                lockout_until = NULL
             WHERE user_id = $1
             `,
       [user.user_id]
@@ -239,6 +317,9 @@ export const login = async (
 
     const permissions = permissionResult.rows;
 
+    // Session lifetime is driven by the configurable timeout (spec 2.30).
+    const sessionSeconds = settings.session_timeout_minutes * 60;
+
     const token = jwt.sign(
       {
         user_id: user.user_id,
@@ -247,7 +328,7 @@ export const login = async (
       },
       process.env.JWT_SECRET || "secret",
       {
-        expiresIn: "1d",
+        expiresIn: sessionSeconds,
       }
     );
 
@@ -255,7 +336,7 @@ export const login = async (
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-      maxAge: 24 * 60 * 60 * 1000,
+      maxAge: sessionSeconds * 1000,
     });
 
     res.status(200).json({
@@ -314,6 +395,16 @@ export const createUserByAdmin = async (
         success: false,
         message: "User already exists",
       });
+      return;
+    }
+
+    const policyError = validatePassword(
+      password,
+      await getSecuritySettings()
+    );
+
+    if (policyError) {
+      res.status(400).json({ success: false, message: policyError });
       return;
     }
 
@@ -722,11 +813,13 @@ export const resetUserPassword = async (
       return;
     }
 
-    if (new_password.length < 8) {
-      res.status(400).json({
-        success: false,
-        message: "Password must be at least 8 characters long.",
-      });
+    const policyError = validatePassword(
+      new_password,
+      await getSecuritySettings()
+    );
+
+    if (policyError) {
+      res.status(400).json({ success: false, message: policyError });
       return;
     }
 
@@ -839,6 +932,16 @@ export const changePassword = async (
         success: false,
         message: "Current password is incorrect.",
       });
+      return;
+    }
+
+    const policyError = validatePassword(
+      new_password,
+      await getSecuritySettings()
+    );
+
+    if (policyError) {
+      res.status(400).json({ success: false, message: policyError });
       return;
     }
 
