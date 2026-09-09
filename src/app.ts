@@ -12,6 +12,7 @@ import BlacklistRoutes from "./modules/Blacklist/Blacklist.routes"
 import ActivityRoutes from "./modules/Activity/Activity.routes"
 import NotificationRoutes from "./modules/Notification/Notification.routes"
 import ReportRoutes from "./modules/Reports/Reports.routes"
+import SystemRoutes from "./modules/System/System.routes"
 
 const app = express();
 
@@ -61,6 +62,7 @@ app.use("/api/blacklist", BlacklistRoutes);
 app.use("/api/activity", ActivityRoutes);
 app.use("/api/notifications", NotificationRoutes);
 app.use("/api/reports", ReportRoutes);
+app.use("/api/system", SystemRoutes);
 app.get("/api", (req, res) => {
   res.json({ message: "API is working!" });
 });
