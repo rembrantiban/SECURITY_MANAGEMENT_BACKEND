@@ -283,8 +283,8 @@
 
                 LEFT JOIN users assignee
                     ON assignee.user_id = ir.assigned_to
-                
-                WHERE ir.status != 'Archived'
+
+                WHERE ir.is_archived = FALSE
 
                 ORDER BY ir.created_at DESC
                 `
@@ -532,7 +532,7 @@
 
                 WHERE
                     ir.reported_by = $1
-                    AND ir.status != 'Archived'
+                    AND ir.is_archived = FALSE
 
                 ORDER BY ir.created_at DESC
                 `,
@@ -948,6 +948,13 @@
 
             const incident = incidentResult.rows[0];
 
+            if (incident.is_archived) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Incident is already archived.",
+                });
+            }
+
             if (!["Resolved", "Closed"].includes(incident.status)) {
                 return res.status(400).json({
                     success: false,
@@ -956,12 +963,12 @@
                 });
             }
 
+            // Archiving only sets the flag — the incident keeps its real status.
             const { rows } = await pool.query(
                 `
                 UPDATE incident_reports
                 SET
-                    pre_archive_status = status,
-                    status = 'Archived',
+                    is_archived = TRUE,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE incident_id = $1
                 RETURNING *;
@@ -1009,19 +1016,19 @@
 
             const incident = incidentResult.rows[0];
 
-            if (incident.status !== "Archived") {
+            if (!incident.is_archived) {
                 return res.status(400).json({
                     success: false,
                     message: "Incident is not archived.",
                 });
             }
 
+            // Restoring only clears the flag — the incident's status is untouched.
             const { rows } = await pool.query(
                 `
                 UPDATE incident_reports
                 SET
-                    status = COALESCE(pre_archive_status, 'Resolved'),
-                    pre_archive_status = NULL,
+                    is_archived = FALSE,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE incident_id = $1
                 RETURNING *;
@@ -1089,7 +1096,7 @@
                 LEFT JOIN users assignee
                     ON assignee.user_id = ir.assigned_to
 
-                WHERE ir.status = 'Archived'
+                WHERE ir.is_archived = TRUE
 
                 ORDER BY ir.updated_at DESC
                 `
@@ -1129,7 +1136,8 @@
 
                     COUNT(DISTINCT assigned_to)::INT AS assigned_personnel
 
-                FROM incident_reports;
+                FROM incident_reports
+                WHERE is_archived = FALSE;
             `);
 
             res.status(200).json({
@@ -1241,16 +1249,19 @@
                 SELECT
                     COUNT(*) FILTER (
                         WHERE assigned_to = $1
+                        AND is_archived = FALSE
                         AND status NOT IN ('Resolved', 'Closed')
                     )::INT AS assigned_incidents,
 
                     COUNT(*) FILTER (
                         WHERE assigned_to = $1
+                        AND is_archived = FALSE
                         AND status = 'In Progress'
                     )::INT AS active_response,
 
                     COUNT(*) FILTER (
                         WHERE assigned_to = $1
+                        AND is_archived = FALSE
                         AND status = 'Resolved'
                         AND DATE(updated_at) = CURRENT_DATE
                     )::INT AS resolved_today

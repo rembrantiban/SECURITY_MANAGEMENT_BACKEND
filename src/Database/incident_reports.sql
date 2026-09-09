@@ -24,19 +24,15 @@ CREATE TABLE incident_reports (
                 'In Progress',
                 'Resolved',
                 'Closed',
-                'Archived'
+                'Archived'   -- legacy value, kept for old rows; new flow uses is_archived
             )
         ),
+
+    -- Archiving no longer touches `status`. An archived incident keeps its real
+    -- status (Resolved / Closed) and is simply hidden from the active list.
+    is_archived BOOLEAN NOT NULL DEFAULT FALSE,
+
     note TEXT,
-
-    -- Remembers the status an incident held before it was archived, so a
-    -- restore returns it to that exact status instead of a fixed default.
-    pre_archive_status VARCHAR(30)
-        CHECK (
-            pre_archive_status IS NULL
-            OR pre_archive_status IN ('Resolved', 'Closed')
-        ),
-
     reported_by INTEGER NOT NULL,
     assigned_to INTEGER,
     assigned_by INTEGER,
@@ -76,6 +72,21 @@ ON incident_reports(status);
 CREATE INDEX idx_incident_created_at
 ON incident_reports(created_at DESC);
 
--- Existing databases: add the archive-status memory column.
+CREATE INDEX idx_incident_is_archived
+ON incident_reports(is_archived);
+
+-- ------------------------------------------------------------------
+-- Migration for existing databases
+-- ------------------------------------------------------------------
 ALTER TABLE incident_reports
-    ADD COLUMN IF NOT EXISTS pre_archive_status VARCHAR(30);
+    ADD COLUMN IF NOT EXISTS is_archived BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- Move any legacy status = 'Archived' rows onto the flag. Their original
+-- status was lost when they were archived, so settle them as 'Closed'.
+UPDATE incident_reports
+SET is_archived = TRUE,
+    status = 'Closed'
+WHERE status = 'Archived';
+
+CREATE INDEX IF NOT EXISTS idx_incident_is_archived
+    ON incident_reports(is_archived);
