@@ -1174,7 +1174,7 @@ export const getUserStatistics = async (
       stats: {
         totalUsers: Number(stats.total_users),
         activeUsers: Number(stats.active_users),
-        administrators: Number(stats.authorized_staff),
+        authorized_staff: Number(stats.authorized_staff),
         disabledUsers: Number(stats.disabled_users),
       },
     });
