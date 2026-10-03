@@ -15,9 +15,24 @@ import ReportRoutes from "./modules/Reports/Reports.routes"
 import SystemRoutes from "./modules/System/System.routes"
 import SecuritySettingsRoutes from "./modules/Security/Security.routes"
 
+
 const app = express();
 
 app.use(cookieParser());
+
+app.use((req, res, next) => {
+  const start = performance.now();
+
+  res.on("finish", () => {
+    const duration = (performance.now() - start).toFixed(2);
+
+    console.log(
+      `${req.method} ${req.originalUrl} - ${res.statusCode} - ${duration}ms`
+    );
+  });
+
+  next();
+});
 
 const allowedOrigins = [
   "http://localhost:5173",
