@@ -180,7 +180,15 @@ export const login = async (
 
     const result = await pool.query(
       `
-            SELECT *
+            SELECT *,
+                   -- Computed in SQL so the lockout is written and checked
+                   -- against the same (database) clock. lockout_until is a
+                   -- naive TIMESTAMP, so comparing it in Node breaks whenever
+                   -- the Node process and DB session use different timezones.
+                   GREATEST(
+                     0,
+                     CEIL(EXTRACT(EPOCH FROM (lockout_until - CURRENT_TIMESTAMP::timestamp)))
+                   )::int AS lockout_seconds_remaining
             FROM users
             WHERE email = $1
                OR username = $2
@@ -219,16 +227,10 @@ export const login = async (
     const settings = await getSecuritySettings();
 
     // Account lockout — reject while a lockout window is still active.
-    if (
-      user.lockout_until &&
-      new Date(user.lockout_until).getTime() > Date.now()
-    ) {
-      const minutesLeft = Math.max(
-        1,
-        Math.ceil(
-          (new Date(user.lockout_until).getTime() - Date.now()) / 60000
-        )
-      );
+    const lockoutSecondsRemaining: number = user.lockout_seconds_remaining ?? 0;
+
+    if (lockoutSecondsRemaining > 0) {
+      const minutesLeft = Math.max(1, Math.ceil(lockoutSecondsRemaining / 60));
 
       res.status(403).json({
         success: false,
