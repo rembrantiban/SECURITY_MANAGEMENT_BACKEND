@@ -5,6 +5,8 @@ declare namespace Express {
     user?: {
       user_id: number;
       role: string;
+      /** JWT expiry claim (seconds since epoch). */
+      exp?: number;
     };
   }
 }

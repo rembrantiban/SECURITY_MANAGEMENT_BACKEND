@@ -7,6 +7,8 @@ const JWT_SECRET =
 interface JwtPayload {
   user_id: number;
   role: string;
+  /** Standard JWT expiry claim (seconds since epoch), set by jwt.sign's expiresIn. */
+  exp?: number;
 }
 
 declare global {

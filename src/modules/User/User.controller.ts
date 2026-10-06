@@ -341,9 +341,17 @@ export const login = async (
       maxAge: sessionSeconds * 1000,
     });
 
+    // Exposed so the client can warn the user the moment the session ends,
+    // since the httpOnly cookie itself is unreadable from JavaScript.
+    const decodedToken = jwt.decode(token) as { exp?: number } | null;
+    const sessionExpiresAt = decodedToken?.exp
+      ? new Date(decodedToken.exp * 1000).toISOString()
+      : new Date(Date.now() + sessionSeconds * 1000).toISOString();
+
     res.status(200).json({
       success: true,
       message: "Login successful",
+      session_expires_at: sessionExpiresAt,
 
       token,
 
@@ -1079,6 +1087,9 @@ export const getCurrentUser = async (
 
     res.status(200).json({
       success: true,
+      session_expires_at: req.user.exp
+        ? new Date(req.user.exp * 1000).toISOString()
+        : null,
 
       user: {
         ...user,
