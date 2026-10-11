@@ -374,14 +374,10 @@ export const approveAccessRequest = async (
             return;
         }
 
-        if (
-            req.user?.role !== "Administrator" &&
-            req.user?.role !== "Security Personnel"
-        ) {
+        if (req.user?.role !== "Administrator") {
             res.status(403).json({
                 success: false,
-                message:
-                    "Only Administrators and Security Personnel can approve visitor requests.",
+                message: "Only Administrators can approve visitor requests.",
             });
             return;
         }
@@ -466,14 +462,10 @@ export const rejectAccessRequest = async (
             return;
         }
 
-        if (
-            req.user?.role !== "Administrator" &&
-            req.user?.role !== "Security Personnel"
-        ) {
+        if (req.user?.role !== "Administrator") {
             res.status(403).json({
                 success: false,
-                message:
-                    "Only Administrators and Security Personnel can reject visitor requests.",
+                message: "Only Administrators can reject visitor requests.",
             });
             return;
         }
