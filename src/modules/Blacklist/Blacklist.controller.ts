@@ -1,32 +1,44 @@
 import { Request, Response } from "express";
 import { pool } from "../../config/db";
+import { logActivity } from "../Activity/Activity.controller";
 
 export const addToBlacklist = async (
     req: Request,
     res: Response
 ): Promise<void> => {
+    if (req.user?.role !== "Administrator") {
+        res.status(403).json({
+            success: false,
+            message: "Only Administrators can blacklist visitors.",
+        });
+        return;
+    }
+
+    const { first_name, middle_name, last_name, reason } = req.body;
+
+    const blacklisted_by = req.user?.user_id;
+
+    if (!first_name || !last_name || !reason) {
+        res.status(400).json({
+            success: false,
+            message: "First name, last name, and reason are required.",
+        });
+        return;
+    }
+
+    const firstName = String(first_name).trim();
+    const middleName =
+        typeof middle_name === "string" && middle_name.trim() !== ""
+            ? middle_name.trim()
+            : null;
+    const lastName = String(last_name).trim();
+
+    const client = await pool.connect();
+
     try {
-        if (req.user?.role !== "Administrator") {
-            res.status(403).json({
-                success: false,
-                message: "Only Administrators can blacklist visitors.",
-            });
-            return;
-        }
+        await client.query("BEGIN");
 
-        const { first_name, middle_name, last_name, reason } = req.body;
-
-        const blacklisted_by = req.user?.user_id;
-
-        if (!first_name || !last_name || !reason) {
-            res.status(400).json({
-                success: false,
-                message: "First name, last name, and reason are required.",
-            });
-            return;
-        }
-
-        const result = await pool.query(
+        const result = await client.query(
             `
             INSERT INTO visitor_blacklist
             (
@@ -43,26 +55,77 @@ export const addToBlacklist = async (
             RETURNING *
             `,
             [
-                first_name,
-                middle_name || null,
-                last_name,
+                firstName,
+                middleName,
+                lastName,
                 reason,
                 blacklisted_by,
             ]
         );
 
+        /**
+         * Reject the visitor's pending access requests.
+         *
+         * Uses the same name-matching rule as the blacklist screening in
+         * createAccessRequest: first + last name (case-insensitive, trimmed),
+         * and the middle name only when both sides carry one.
+         */
+        const rejected = await client.query(
+            `
+            UPDATE access_requests
+            SET
+                status = 'Rejected',
+                approved_by = $4,
+                approved_at = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE
+                status = 'Pending'
+                AND LOWER(TRIM(first_name)) = LOWER($1)
+                AND LOWER(TRIM(last_name)) = LOWER($2)
+                AND (
+                    middle_name IS NULL
+                    OR TRIM(middle_name) = ''
+                    OR $3::text IS NULL
+                    OR LOWER(TRIM(middle_name)) = LOWER($3)
+                )
+            RETURNING request_number
+            `,
+            [firstName, lastName, middleName, blacklisted_by]
+        );
+
+        await client.query("COMMIT");
+
+        for (const row of rejected.rows) {
+            logActivity(
+                blacklisted_by,
+                "Access Request",
+                row.request_number,
+                "rejected (visitor blacklisted)",
+                req.ip ?? null
+            );
+        }
+
+        const rejectedCount = rejected.rowCount ?? 0;
+
         res.status(201).json({
             success: true,
-            message: "Visitor blacklisted successfully.",
+            message:
+                rejectedCount > 0
+                    ? `Visitor blacklisted successfully. ${rejectedCount} pending request(s) rejected.`
+                    : "Visitor blacklisted successfully.",
             entry: result.rows[0],
+            rejected_requests: rejected.rows.map((row) => row.request_number),
         });
     } catch (error) {
+        await client.query("ROLLBACK");
         console.error(error);
 
         res.status(500).json({
             success: false,
             message: "Failed to blacklist visitor.",
         });
+    } finally {
+        client.release();
     }
 };
 

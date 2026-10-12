@@ -711,7 +711,6 @@ export const changeAccountDetails = async (
       first_name,
       middle_name,
       last_name,
-      email,
       password,
     } = req.body;
 
@@ -724,25 +723,6 @@ export const changeAccountDetails = async (
       res.status(404).json({
         success: false,
         message: "User not found",
-      });
-      return;
-    }
-
-    // Prevent duplicate email
-    const emailExists = await pool.query(
-      `
-      SELECT user_id
-      FROM users
-      WHERE email = $1
-      AND user_id <> $2
-      `,
-      [email, user_id]
-    );
-
-    if (emailExists.rows.length > 0) {
-      res.status(400).json({
-        success: false,
-        message: "Email is already in use.",
       });
       return;
     }
@@ -760,9 +740,8 @@ export const changeAccountDetails = async (
         first_name = $1,
         middle_name = $2,
         last_name = $3,
-        email = $4,
-        password = $5
-      WHERE user_id = $6
+        password = $4
+      WHERE user_id = $5
       RETURNING
         user_id,
         first_name,
@@ -778,7 +757,6 @@ export const changeAccountDetails = async (
         first_name,
         middle_name,
         last_name,
-        email,
         hashedPassword,
         user_id,
       ]
