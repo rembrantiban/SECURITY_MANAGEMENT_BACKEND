@@ -306,6 +306,18 @@ export const updateMonitoringSchedule = async (
             end_time,
         } = req.body;
 
+        /* Prevent past schedule */
+
+        const today = new Date().toISOString().split("T")[0];
+
+        if (schedule_date < today) {
+            res.status(400).json({
+                success: false,
+                message: "Schedule date cannot be in the past.",
+            });
+            return;
+        }
+
         const result = await pool.query(
             `
       UPDATE monitoring_schedules
