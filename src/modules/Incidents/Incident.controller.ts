@@ -616,7 +616,9 @@
         LEFT JOIN users admin
             ON admin.user_id = ir.assigned_by
 
-        WHERE ir.assigned_to = $1
+        WHERE
+            ir.assigned_to = $1
+            AND ir.is_archived = FALSE
 
         ORDER BY ir.created_at DESC
         `,
@@ -842,6 +844,8 @@
     };
 
 
+    const MAX_RESOLUTION_NOTE_LENGTH = 1000;
+
     export const ResolveIncident = async (
         req: Request,
         res: Response
@@ -896,6 +900,25 @@
                 });
             }
 
+            const rawNote = req.body?.resolution_note;
+
+            if (rawNote !== undefined && rawNote !== null && typeof rawNote !== "string") {
+                return res.status(400).json({
+                    success: false,
+                    message: "Resolution note must be text.",
+                });
+            }
+
+            const resolutionNote =
+                typeof rawNote === "string" ? rawNote.trim() : "";
+
+            if (resolutionNote.length > MAX_RESOLUTION_NOTE_LENGTH) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Resolution note must be ${MAX_RESOLUTION_NOTE_LENGTH} characters or fewer.`,
+                });
+            }
+
             const { rows } = await pool.query(
                 `
                 UPDATE incident_reports
@@ -906,6 +929,14 @@
                 RETURNING *;
                 `,
                 [incident_id]
+            );
+
+            logActivity(
+                currentUser.user_id,
+                "Incident Report",
+                incident.incident_number,
+                resolutionNote ? `resolved: ${resolutionNote}` : "resolved",
+                req.ip ?? null
             );
 
             return res.status(200).json({
