@@ -1007,6 +1007,14 @@
                 [incident_id]
             );
 
+            logActivity(
+                req.user?.user_id,
+                "Incident Report",
+                incident.incident_number,
+                "archived",
+                req.ip ?? null
+            );
+
             return res.status(200).json({
                 success: true,
                 message: "Incident archived successfully.",
@@ -1065,6 +1073,14 @@
                 RETURNING *;
                 `,
                 [incident_id]
+            );
+
+            logActivity(
+                req.user?.user_id,
+                "Incident Report",
+                incident.incident_number,
+                "restored from archive",
+                req.ip ?? null
             );
 
             return res.status(200).json({
