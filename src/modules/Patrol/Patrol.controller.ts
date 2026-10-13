@@ -238,7 +238,7 @@ export const completePatrol = async (
             return;
         }
 
-        // Lock the log so the duty scheduler cannot close it mid-request.
+        // Lock the log so concurrent requests cannot complete it twice.
         // window_ended uses Asia/Manila time to match the duty scheduler; shifts whose
         // end_time is not after start_time are treated as ending the next day.
         const patrolResult = await client.query(

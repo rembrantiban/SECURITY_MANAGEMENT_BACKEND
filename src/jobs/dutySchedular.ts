@@ -3,28 +3,10 @@ import { pool } from "../config/db";
 
 cron.schedule("* * * * *", async () => {
     try {
+        // Patrols are never auto-completed: personnel must complete them
+        // manually once the scheduled end time is reached (see completePatrol).
 
-        // Current Philippine Date & Time
-        const nowDate = `(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila')::date`;
-        const nowTime = `(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila')::time`;
-
-       
-
-        // 2. Complete Monitoring Schedule
-        const completeScheduleResult = await pool.query(`
-            UPDATE monitoring_schedules
-            SET
-                status = 'Completed',
-                updated_at = CURRENT_TIMESTAMP
-            WHERE
-                status = 'Ongoing'
-                AND schedule_date = ${nowDate}
-                AND ${nowTime} >= end_time;
-        `);
-
-        console.log("Completed schedules:", completeScheduleResult.rowCount);
-
-        // 3. Update User Duty Status
+        // 1. Update User Duty Status
         await pool.query(`
             UPDATE users u
             SET on_duty = EXISTS (
@@ -36,7 +18,7 @@ cron.schedule("* * * * *", async () => {
             );
         `);
 
-        // 4. Start Patrol
+        // 2. Start Patrol
         const startPatrolResult = await pool.query(`
             UPDATE patrol_logs pl
             SET
@@ -52,23 +34,7 @@ cron.schedule("* * * * *", async () => {
 
         console.log("Started patrols:", startPatrolResult.rowCount);
 
-        // 5. Complete Patrol
-        const completePatrolResult = await pool.query(`
-            UPDATE patrol_logs pl
-            SET
-                status = 'Completed',
-                patrol_end = CURRENT_TIMESTAMP,
-                updated_at = CURRENT_TIMESTAMP
-            FROM monitoring_schedules ms
-            WHERE
-                pl.schedule_id = ms.schedule_id
-                AND pl.status = 'Ongoing'
-                AND ms.status = 'Completed';
-        `);
-
-        console.log("Completed patrols:", completePatrolResult.rowCount);
-
-        // 6. Mark Missed Patrol
+        // 3. Mark Missed Patrol
         const missedPatrolResult = await pool.query(`
             UPDATE patrol_logs pl
             SET
