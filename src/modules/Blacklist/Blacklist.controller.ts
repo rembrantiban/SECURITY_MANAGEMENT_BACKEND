@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { pool } from "../../config/db";
 import { logActivity } from "../Activity/Activity.controller";
+import { findBlacklistMatch, toVisitorName } from "./Blacklist.service";
 
 export const addToBlacklist = async (
     req: Request,
@@ -173,6 +174,52 @@ export const getBlacklist = async (
         res.status(500).json({
             success: false,
             message: "Failed to fetch blacklist.",
+        });
+    }
+};
+
+/**
+ * Pre-submit screening used by the Register Visitor form so staff are told
+ * a visitor is blacklisted before they submit. createAccessRequest still
+ * enforces the same rule server-side.
+ */
+export const checkBlacklist = async (
+    req: Request,
+    res: Response
+): Promise<void> => {
+    const visitorName = toVisitorName(
+        req.query.first_name,
+        req.query.middle_name,
+        req.query.last_name
+    );
+
+    if (!visitorName.firstName || !visitorName.lastName) {
+        res.status(400).json({
+            success: false,
+            message: "First name and last name are required.",
+        });
+        return;
+    }
+
+    try {
+        const match = await findBlacklistMatch(pool, visitorName);
+
+        res.status(200).json({
+            success: true,
+            message: match
+                ? `${match.name} is on the visitor blacklist.`
+                : "Visitor is not blacklisted.",
+            data: {
+                blacklisted: match !== null,
+                blacklist: match,
+            },
+        });
+    } catch (error) {
+        console.error(error);
+
+        res.status(500).json({
+            success: false,
+            message: "Failed to check blacklist.",
         });
     }
 };

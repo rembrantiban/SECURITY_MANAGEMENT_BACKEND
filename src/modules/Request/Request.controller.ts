@@ -2,6 +2,10 @@ import { Request, Response } from "express";
 import { pool } from "../../config/db";
 import { uploadToCloudinary } from "../../utils/UploadToCloudinary";
 import { logActivity } from "../Activity/Activity.controller";
+import {
+    findBlacklistMatch,
+    toVisitorName,
+} from "../Blacklist/Blacklist.service";
 
 export const createAccessRequest = async (
     req: Request,
@@ -22,14 +26,8 @@ export const createAccessRequest = async (
 
         const requested_by = req.user?.user_id;
 
-        const firstName =
-            typeof first_name === "string" ? first_name.trim() : "";
-        const middleName =
-            typeof middle_name === "string" && middle_name.trim() !== ""
-                ? middle_name.trim()
-                : null;
-        const lastName =
-            typeof last_name === "string" ? last_name.trim() : "";
+        const visitorName = toVisitorName(first_name, middle_name, last_name);
+        const { firstName, middleName, lastName } = visitorName;
 
         if (
             !requested_by ||
@@ -46,72 +44,17 @@ export const createAccessRequest = async (
             return;
         }
 
-        /**
-         * Blacklist screening.
-         *
-         * A request is blocked when an active blacklist entry matches on
-         * first name + last name (case-insensitive, whitespace-trimmed).
-         * When BOTH the request and the blacklist entry carry a middle name,
-         * that must match too — otherwise the first + last match still stands,
-         * so a middle name can't be added or dropped to slip past the list.
-         * The most specific match (middle name included) is preferred.
-         */
-        const blacklistMatch = await client.query(
-            `
-            SELECT
-                blacklist_id,
-                first_name,
-                middle_name,
-                last_name,
-                reason,
-                created_at
-            FROM visitor_blacklist
-            WHERE
-                is_active = true
-                AND LOWER(TRIM(first_name)) = LOWER($1)
-                AND LOWER(TRIM(last_name)) = LOWER($2)
-                AND (
-                    middle_name IS NULL
-                    OR TRIM(middle_name) = ''
-                    OR $3::text IS NULL
-                    OR LOWER(TRIM(middle_name)) = LOWER($3)
-                )
-            ORDER BY
-                CASE
-                    WHEN $3::text IS NOT NULL
-                        AND LOWER(TRIM(middle_name)) = LOWER($3)
-                    THEN 0
-                    ELSE 1
-                END,
-                created_at DESC
-            LIMIT 1
-            `,
-            [firstName, lastName, middleName]
-        );
+        // Server-side enforcement: the client pre-check is advisory only.
+        const blacklistMatch = await findBlacklistMatch(client, visitorName);
 
-        if (blacklistMatch.rows.length > 0) {
+        if (blacklistMatch) {
             await client.query("ROLLBACK");
-
-            const match = blacklistMatch.rows[0];
-
-            const blacklistedName = [
-                match.first_name,
-                match.middle_name,
-                match.last_name,
-            ]
-                .filter(Boolean)
-                .join(" ");
 
             res.status(403).json({
                 success: false,
                 blacklisted: true,
-                message: `${blacklistedName} is on the visitor blacklist and cannot be registered for campus access.`,
-                blacklist: {
-                    blacklist_id: match.blacklist_id,
-                    name: blacklistedName,
-                    reason: match.reason,
-                    since: match.created_at,
-                },
+                message: `${blacklistMatch.name} is on the visitor blacklist and cannot be registered for campus access.`,
+                blacklist: blacklistMatch,
             });
             return;
         }
