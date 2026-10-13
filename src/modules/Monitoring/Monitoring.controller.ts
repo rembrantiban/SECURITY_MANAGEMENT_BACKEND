@@ -54,94 +54,137 @@ export const createMonitoringSchedule = async (
             return;
         }
 
-        /* Check Security Personnel */
+        const client = await pool.connect();
+        let schedule;
 
-        const personnel = await pool.query(
-            `
-            SELECT
-                user_id,
-                first_name,
-                last_name
-            FROM users
-            WHERE
-                user_id = $1
-                AND role = 'Security Personnel'
-                AND status = TRUE
-            `,
-            [user_id]
-        );
+        try {
+            await client.query("BEGIN");
 
-        if (personnel.rows.length === 0) {
-            res.status(404).json({
-                success: false,
-                message: "Security personnel not found.",
-            });
-            return;
-        }
+            /* Check Security Personnel (row lock serializes concurrent assignments) */
 
-        /* Prevent overlapping schedules */
+            const personnel = await client.query(
+                `
+                SELECT
+                    user_id,
+                    first_name,
+                    last_name
+                FROM users
+                WHERE
+                    user_id = $1
+                    AND role = 'Security Personnel'
+                    AND status = TRUE
+                FOR UPDATE
+                `,
+                [user_id]
+            );
 
-        const overlap = await pool.query(
-            `
-            SELECT schedule_id
-            FROM monitoring_schedules
-            WHERE
-                user_id = $1
-                AND schedule_date = $2
-                AND (
-                    start_time < $4
-                    AND end_time > $3
+            if (personnel.rows.length === 0) {
+                await client.query("ROLLBACK");
+                res.status(404).json({
+                    success: false,
+                    message: "Security personnel not found.",
+                });
+                return;
+            }
+
+            /* Only assign personnel whose previous patrols are all completed */
+
+            const unfinished = await client.query(
+                `
+                SELECT schedule_id, assigned_area, status
+                FROM monitoring_schedules
+                WHERE
+                    user_id = $1
+                    AND status IN ('Pending', 'Ongoing')
+                ORDER BY schedule_date, start_time
+                LIMIT 1
+                `,
+                [user_id]
+            );
+
+            if (unfinished.rows.length > 0) {
+                await client.query("ROLLBACK");
+                const active = unfinished.rows[0];
+                res.status(409).json({
+                    success: false,
+                    message: `This security personnel still has a ${active.status.toLowerCase()} patrol at ${active.assigned_area}. It must be completed before assigning a new patrol.`,
+                });
+                return;
+            }
+
+            /* Prevent overlapping schedules */
+
+            const overlap = await client.query(
+                `
+                SELECT schedule_id
+                FROM monitoring_schedules
+                WHERE
+                    user_id = $1
+                    AND schedule_date = $2
+                    AND (
+                        start_time < $4
+                        AND end_time > $3
+                    )
+                `,
+                [
+                    user_id,
+                    schedule_date,
+                    start_time,
+                    end_time,
+                ]
+            );
+
+            if (overlap.rows.length > 0) {
+                await client.query("ROLLBACK");
+                res.status(400).json({
+                    success: false,
+                    message:
+                        "This security personnel already has a monitoring schedule during the selected time.",
+                });
+                return;
+            }
+
+            /* Insert Schedule */
+
+            const result = await client.query(
+                `
+                INSERT INTO monitoring_schedules
+                (
+                    user_id,
+                    assigned_by,
+                    assigned_area,
+                    schedule_date,
+                    start_time,
+                    end_time,
+                    remarks
                 )
-            `,
-            [
-                user_id,
-                schedule_date,
-                start_time,
-                end_time,
-            ]
-        );
 
-        if (overlap.rows.length > 0) {
-            res.status(400).json({
-                success: false,
-                message:
-                    "This security personnel already has a monitoring schedule during the selected time.",
-            });
-            return;
+                VALUES
+                (
+                    $1,$2,$3,$4,$5,$6,$7
+                )
+
+                RETURNING *
+                `,
+                [
+                    user_id,
+                    assigned_by,
+                    assigned_area,
+                    schedule_date,
+                    start_time,
+                    end_time,
+                    remarks ?? null,
+                ]
+            );
+
+            await client.query("COMMIT");
+            schedule = result.rows[0];
+        } catch (error) {
+            await client.query("ROLLBACK");
+            throw error;
+        } finally {
+            client.release();
         }
-
-        /* Insert Schedule */
-
-        const result = await pool.query(
-            `
-       INSERT INTO monitoring_schedules
-            (
-                user_id,
-                assigned_by,
-                assigned_area,
-                schedule_date,
-                start_time,
-                end_time,
-                remarks
-            )
-
-            VALUES
-            (
-                $1,$2,$3,$4,$5,$6,$7
-            )
-
-            RETURNING *
-            `,
-            [
-                user_id,
-                assigned_by,
-                assigned_area,
-                schedule_date,
-                start_time,
-                end_time,
-                remarks ?? null,
-            ]
-        );
 
         logActivity(
             assigned_by,
@@ -154,7 +197,7 @@ export const createMonitoringSchedule = async (
         res.status(201).json({
             success: true,
             message: "Monitoring schedule created successfully.",
-            schedule: result.rows[0],
+            schedule,
         });
 
     } catch (error) {
