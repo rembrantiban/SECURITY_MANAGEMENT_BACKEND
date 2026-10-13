@@ -238,11 +238,26 @@ export const completePatrol = async (
             return;
         }
 
+        // Lock the log so the duty scheduler cannot close it mid-request.
+        // window_ended uses Asia/Manila time to match the duty scheduler; shifts whose
+        // end_time is not after start_time are treated as ending the next day.
         const patrolResult = await client.query(
             `
-            SELECT patrol_log_id, status, user_id
-            FROM patrol_logs
-            WHERE schedule_id = $1
+            SELECT
+                pl.patrol_log_id,
+                pl.status,
+                pl.user_id,
+                (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila') >=
+                    (ms.schedule_date + ms.end_time)
+                    + CASE
+                        WHEN ms.end_time <= ms.start_time THEN INTERVAL '1 day'
+                        ELSE INTERVAL '0'
+                      END AS window_ended
+            FROM patrol_logs pl
+            INNER JOIN monitoring_schedules ms
+                ON pl.schedule_id = ms.schedule_id
+            WHERE pl.schedule_id = $1
+            FOR UPDATE OF pl
             `,
             [schedule_id]
         );
@@ -277,6 +292,18 @@ export const completePatrol = async (
             res.status(400).json({
                 success: false,
                 message: "This patrol is not currently ongoing.",
+            });
+
+            return;
+        }
+
+        if (!patrol.window_ended) {
+            await client.query("ROLLBACK");
+
+            res.status(400).json({
+                success: false,
+                message:
+                    "This patrol can only be completed once its scheduled end time has been reached.",
             });
 
             return;
@@ -488,12 +515,17 @@ export const getMyCompletedPatrols = async (
                 pl.area_patrolled,
                 pl.patrol_start,
                 pl.patrol_end,
+                pl.observations,
                 pl.status,
                 pl.created_at,
+                pl.updated_at,
 
                 ms.schedule_date,
                 ms.start_time,
                 ms.end_time,
+                ms.remarks,
+
+                CONCAT_WS(' ', ab.first_name, ab.last_name) AS assigned_by_name,
 
                 u.user_id,
                 CONCAT(u.first_name, ' ', u.last_name) AS personnel_name
@@ -503,6 +535,8 @@ export const getMyCompletedPatrols = async (
                 ON pl.schedule_id = ms.schedule_id
             INNER JOIN users u
                 ON pl.user_id = u.user_id
+            LEFT JOIN users ab
+                ON ms.assigned_by = ab.user_id
 
             WHERE
                 pl.user_id = $1
